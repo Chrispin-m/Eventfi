@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Upload, CheckCircle, XCircle, Scan } from 'lucide-react';
+import { Camera, Upload, CheckCircle, XCircle, Scan, StopCircle } from 'lucide-react';
 import { useWeb3 } from '../context/Web3Context';
 import { toast } from 'react-toastify';
+import QrScanner from 'qr-scanner';
 
 interface VerificationResult {
   ticketId: number;
@@ -14,26 +15,85 @@ interface VerificationResult {
 export const ScannerPage: React.FC = () => {
   const { account, isConnected } = useWeb3();
   const [isScanning, setIsScanning] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
   const [manualInput, setManualInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const qrScannerRef = useRef<QrScanner | null>(null);
 
+  const startCameraScanning = async () => {
+    if (!videoRef.current) return;
+
+    try {
+      setIsCameraActive(true);
+      
+      // Check if QR scanner is supported
+      const hasCamera = await QrScanner.hasCamera();
+      if (!hasCamera) {
+        toast.error('No camera found on this device');
+        setIsCameraActive(false);
+        return;
+      }
+
+      // Create QR scanner instance
+      qrScannerRef.current = new QrScanner(
+        videoRef.current,
+        (result) => {
+          console.log('QR Code detected:', result.data);
+          verifyTicket(result.data);
+          stopCameraScanning();
+        },
+        {
+          onDecodeError: (error) => {
+            // Silently handle decode errors - they're normal when no QR code is visible
+            console.log('Decode error (normal):', error);
+          },
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
+          preferredCamera: 'environment', // Use back camera on mobile
+        }
+      );
+
+      await qrScannerRef.current.start();
+      toast.success('Camera started - point at QR code to scan');
+    } catch (error) {
+      console.error('Error starting camera:', error);
+      toast.error('Failed to start camera. Please check permissions.');
+      setIsCameraActive(false);
+    }
+  };
+
+  const stopCameraScanning = () => {
+    if (qrScannerRef.current) {
+      qrScannerRef.current.stop();
+      qrScannerRef.current.destroy();
+      qrScannerRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  // Cleanup on component unmount
+  React.useEffect(() => {
+    return () => {
+      stopCameraScanning();
+    };
+  }, []);
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // In a real implementation, you'd use a QR code reading library
-    // For this MVP, we'll simulate QR code reading
-    toast.info('QR code scanning simulation - this would read the uploaded image');
-    
-    // Simulate QR data
-    const mockQrData = JSON.stringify({
-      ticketId: Math.floor(Math.random() * 1000) + 1,
-      eventId: 1,
-      platform: 'CrossFi-Tickets'
-    });
-    
-    verifyTicket(mockQrData);
+    // Use QR scanner to read from uploaded file
+    QrScanner.scanImage(file, { returnDetailedScanResult: true })
+      .then(result => {
+        console.log('QR Code from file:', result.data);
+        verifyTicket(result.data);
+        toast.success('QR code read from image successfully');
+      })
+      .catch(error => {
+        console.error('Error reading QR code from file:', error);
+        toast.error('Could not read QR code from image. Please try again.');
+      });
   };
 
   const handleManualVerification = () => {

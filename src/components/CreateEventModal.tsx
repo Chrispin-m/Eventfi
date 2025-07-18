@@ -233,9 +233,9 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
                 onChange={(e) => handleEventDataChange('feeTokenType', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="XFI">XFI (0.1 XFI)</option>
-                <option value="XUSD">XUSD (0.1 XUSD)</option>
-                <option value="MPX">MPX (0.1 MPX)</option>
+                <option value="XFI">XFI (Free for testing)</option>
+                <option value="XUSD">XUSD (Free for testing)</option>
+                <option value="MPX">MPX (Free for testing)</option>
               </select>
             </div>
           </div>
@@ -354,7 +354,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
               </div>
               <div>
                 <span className="text-sm font-medium text-gray-700">Listing Fee:</span>
-                <p className="text-gray-900">0.1 {eventData.feeTokenType}</p>
+                <p className="text-gray-900">0 {eventData.feeTokenType} (Free for testing)</p>
               </div>
               <div>
                 <span className="text-sm font-medium text-gray-700">Ticket Tiers:</span>
@@ -370,8 +370,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
 
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <p className="text-yellow-800 text-sm">
-                <strong>Note:</strong> Creating this event will require a transaction to pay the listing fee 
-                and deploy your event on the CrossFi blockchain.
+                <strong>Note:</strong> Creating this event will require a transaction to deploy your event on the CrossFi blockchain. 
+                Listing fee is currently set to 0 for testing purposes.
               </p>
             </div>
           </div>

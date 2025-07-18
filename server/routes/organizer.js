@@ -83,7 +83,7 @@ router.post('/events', validateSignature, asyncHandler(async (req, res) => {
     const tempEventId = Date.now();
     
     // Calculate total listing fee
-    const listingFee = ethers.parseEther('0.1');
+    const listingFee = ethers.parseEther('0'); // 0 for testing
 
     res.json({
       success: true,

@@ -34,7 +34,7 @@ export const CONTRACT_ADDRESSES = {
 // Platform configuration
 export const PLATFORM_CONFIG = {
   address: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A',
-  listingFee: ethers.parseEther('0.1'),
+  listingFee: ethers.parseEther('0'), // 0 for testing
 };
 
 // Initialize providers
