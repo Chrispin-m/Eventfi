@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - CROSSFI_TESTNET_RPC=${CROSSFI_TESTNET_RPC}
+      - CROSSFI_MAINNET_RPC=${CROSSFI_MAINNET_RPC}
+      - EVENT_MANAGER_CONTRACT=${EVENT_MANAGER_CONTRACT}
+      - XUSD_TOKEN_ADDRESS=${XUSD_TOKEN_ADDRESS}
+      - MPX_TOKEN_ADDRESS=${MPX_TOKEN_ADDRESS}
+      - PLATFORM_ADDRESS=${PLATFORM_ADDRESS}
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  ssl:
