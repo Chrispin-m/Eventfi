@@ -52,11 +52,11 @@ export const WalletButton: React.FC = () => {
         <button
           onClick={handleConnect}
           disabled={isConnecting}
-          className="flex items-center justify-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto min-w-[140px] touch-manipulation"
+          className="flex items-center justify-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-3 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto min-w-[140px] touch-manipulation text-base font-medium"
           style={{ WebkitTapHighlightColor: 'transparent' }}
         >
           <Wallet className="w-4 h-4 flex-shrink-0" />
-          <span className="text-sm sm:text-base whitespace-nowrap">
+          <span className="whitespace-nowrap">
             {isConnecting ? 'Connecting...' : 'Connect Wallet'}
           </span>
         </button>

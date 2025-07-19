@@ -56,12 +56,15 @@ export const Navbar: React.FC = () => {
           </div>
 
           {/* Wallet Button */}
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 hidden md:block">
             <WalletButton />
           </div>
 
           {/* Mobile menu button */}
-          <div className="md:hidden">
+          <div className="md:hidden flex items-center space-x-2">
+            <div className="flex-shrink-0">
+              <WalletButton />
+            </div>
             <button
               onClick={() => setIsOpen(!isOpen)}
               className="text-gray-700 hover:text-blue-600 focus:outline-none focus:text-blue-600 p-2 touch-manipulation"

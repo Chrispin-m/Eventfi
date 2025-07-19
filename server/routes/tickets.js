@@ -45,6 +45,50 @@ router.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 /**
+ * @route POST /api/tickets/staff-verify
+ * @desc Verify a ticket using staff member credentials
+ * @access Public
+ */
+router.post('/staff-verify', asyncHandler(async (req, res) => {
+  const { qrData, staffCode, eventId } = req.body;
+
+  if (!qrData || !staffCode || !eventId) {
+    return res.status(400).json({ error: 'QR code data, staff code, and event ID are required' });
+  }
+
+  try {
+    // Parse QR code data to extract ticket ID
+    const ticketId = extractTicketIdFromQR(qrData);
+    
+    if (!ticketId) {
+      return res.status(400).json({ error: 'Invalid QR code format' });
+    }
+
+    // Verify staff code (simple implementation - in production use proper authentication)
+    const validStaffCode = `STAFF-${eventId}`;
+    if (staffCode !== validStaffCode) {
+      return res.status(401).json({ error: 'Invalid staff code' });
+    }
+
+    const contract = getEventManagerContract();
+    const verification = await contract.verifyTicket(ticketId);
+
+    res.json({
+      ticketId,
+      valid: verification[0],
+      reason: verification[1],
+      qrData,
+      timestamp: new Date().toISOString(),
+      staffVerified: true
+    });
+
+  } catch (error) {
+    console.error('Error verifying ticket with staff code:', error);
+    res.status(500).json({ error: 'Failed to verify ticket' });
+  }
+}));
+
+/**
  * @route POST /api/tickets/verify
  * @desc Verify a ticket using QR code data
  * @access Public

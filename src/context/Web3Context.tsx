@@ -84,14 +84,30 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const connectWallet = async () => {
     if (typeof window.ethereum === 'undefined') {
-      throw new Error('MetaMask is not installed');
+      throw new Error('Please install MetaMask or another Web3 wallet');
     }
 
     setIsConnecting(true);
     
     try {
+      // Request account access
       const provider = new ethers.BrowserProvider(window.ethereum);
-      await provider.send('eth_requestAccounts', []);
+      
+      // For mobile compatibility, use a more robust connection method
+      let accounts;
+      try {
+        accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      } catch (error: any) {
+        if (error.code === 4001) {
+          throw new Error('Please connect to MetaMask');
+        }
+        // Fallback for older wallets
+        accounts = await provider.send('eth_requestAccounts', []);
+      }
+      
+      if (!accounts || accounts.length === 0) {
+        throw new Error('No accounts found. Please unlock your wallet.');
+      }
       
       const signer = await provider.getSigner();
       const address = await signer.getAddress();
@@ -104,7 +120,12 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       // Check if we're on CrossFi network
       if (Number(network.chainId) !== 4157) {
-        await switchToCrossFi();
+        try {
+          await switchToCrossFi();
+        } catch (switchError) {
+          console.warn('Could not switch to CrossFi network:', switchError);
+          // Don't throw here, let user continue with current network
+        }
       }
     } catch (error) {
       console.error('Error connecting wallet:', error);

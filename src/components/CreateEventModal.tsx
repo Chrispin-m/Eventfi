@@ -228,14 +228,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Listing Fee Token
               </label>
+              <p className="text-xs text-gray-500 mb-2">Free for testing purposes</p>
               <select
                 value={eventData.feeTokenType}
                 onChange={(e) => handleEventDataChange('feeTokenType', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="XFI">XFI (Free for testing)</option>
-                <option value="XUSD">XUSD (Free for testing)</option>
-                <option value="MPX">MPX (Free for testing)</option>
+                <option value="XFI">XFI - Free</option>
+                <option value="XUSD">XUSD - Free</option>
+                <option value="MPX">MPX - Free</option>
               </select>
             </div>
           </div>

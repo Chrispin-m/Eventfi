@@ -1,7 +1,6 @@
 import express from 'express';
 import { ethers } from 'ethers';
 import { getEventManagerContract } from '../config/blockchain.js';
-import { validateSignature } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = express.Router();
@@ -9,9 +8,9 @@ const router = express.Router();
 /**
  * @route POST /api/organizer/events
  * @desc Create a new event
- * @access Private (requires signature)
+ * @access Public (validates signature in request body)
  */
-router.post('/events', validateSignature, asyncHandler(async (req, res) => {
+router.post('/events', asyncHandler(async (req, res) => {
   const {
     title,
     description,
@@ -21,8 +20,26 @@ router.post('/events', validateSignature, asyncHandler(async (req, res) => {
     metadataURI,
     feeTokenType,
     tiers,
-    organizerAddress
+    organizerAddress,
+    signature,
+    message
   } = req.body;
+
+  // Validate signature manually
+  if (!signature || !message || !organizerAddress) {
+    return res.status(400).json({ 
+      error: 'Missing required authentication fields: signature, message, organizerAddress' 
+    });
+  }
+
+  try {
+    const signerAddress = ethers.verifyMessage(message, signature);
+    if (signerAddress.toLowerCase() !== organizerAddress.toLowerCase()) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+  } catch (error) {
+    return res.status(401).json({ error: 'Signature validation failed' });
+  }
 
   // Validation
   if (!title || !description || !location || !startDate || !endDate) {

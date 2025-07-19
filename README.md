@@ -115,10 +115,12 @@ A decentralized event ticketing platform built on CrossFi Chain supporting XFI, 
 
 ### For Event Entry
 
-1. **Scanner Access**: Event organizers can access the ticket scanner
+1. **Scanner Access**: Event organizers and authorized staff can access the ticket scanner
+2. **Staff Mode**: Staff members can use the scanner without wallet connection using event-specific staff codes
 2. **Verify Tickets**: Upload QR code images or enter ticket data manually
-3. **Blockchain Verification**: System verifies tickets against the smart contract
-4. **Mark as Used**: Valid tickets can be marked as used for entry
+3. **Live Camera Scanning**: Real-time QR code scanning using device camera
+4. **Blockchain Verification**: System verifies tickets against the smart contract
+5. **Entry Decision**: Staff can approve or deny entry based on verification results
 
 ## 🔧 Configuration
 
