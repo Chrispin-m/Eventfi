@@ -48,19 +48,17 @@ export const WalletButton: React.FC = () => {
 
   if (!isConnected) {
     return (
-      <div className="relative">
-        <button
-          onClick={handleConnect}
-          disabled={isConnecting}
-          className="flex items-center justify-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-3 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto min-w-[140px] touch-manipulation text-base font-medium"
-          style={{ WebkitTapHighlightColor: 'transparent' }}
-        >
-          <Wallet className="w-4 h-4 flex-shrink-0" />
-          <span className="whitespace-nowrap">
-            {isConnecting ? 'Connecting...' : 'Connect Wallet'}
-          </span>
-        </button>
-      </div>
+      <button
+        onClick={handleConnect}
+        disabled={isConnecting}
+        className="flex items-center justify-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-3 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed w-full touch-manipulation text-base font-medium"
+        style={{ WebkitTapHighlightColor: 'transparent' }}
+      >
+        <Wallet className="w-4 h-4 flex-shrink-0" />
+        <span className="whitespace-nowrap">
+          {isConnecting ? 'Connecting...' : 'Connect Wallet'}
+        </span>
+      </button>
     );
   }
 
@@ -72,14 +70,14 @@ export const WalletButton: React.FC = () => {
         style={{ WebkitTapHighlightColor: 'transparent' }}
       >
         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-        <span className="font-medium text-sm sm:text-base truncate max-w-[100px] sm:max-w-none">
+        <span className="font-medium text-sm truncate max-w-[120px]">
           {formatAddress(account!)}
         </span>
         <ChevronDown className="w-4 h-4" />
       </button>
 
       {isDropdownOpen && (
-        <div className="absolute right-0 mt-2 w-72 sm:w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 max-w-[calc(100vw-2rem)]">
+        <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 max-w-[calc(100vw-1rem)]">
           <div className="px-4 py-3 border-b border-gray-100">
             <div className="text-sm text-gray-500">Connected to</div>
             <div className="font-medium text-gray-900">{getNetworkName(chainId)}</div>

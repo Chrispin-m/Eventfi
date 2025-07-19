@@ -62,9 +62,6 @@ export const Navbar: React.FC = () => {
 
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center space-x-2">
-            <div className="flex-shrink-0">
-              <WalletButton />
-            </div>
             <button
               onClick={() => setIsOpen(!isOpen)}
               className="text-gray-700 hover:text-blue-600 focus:outline-none focus:text-blue-600 p-2 touch-manipulation"
@@ -79,6 +76,11 @@ export const Navbar: React.FC = () => {
         {isOpen && (
           <div className="md:hidden">
             <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 border-t border-gray-200 bg-white">
+              {/* Wallet Connection in Mobile Menu */}
+              <div className="px-3 py-3 border-b border-gray-100">
+                <WalletButton />
+              </div>
+              
               {navigation.map((item) => {
                 const Icon = item.icon;
                 return (

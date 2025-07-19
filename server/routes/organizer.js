@@ -3,6 +3,33 @@ import { ethers } from 'ethers';
 import { getEventManagerContract } from '../config/blockchain.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
+// Add missing validateSignature function
+const validateSignature = (req, res, next) => {
+  try {
+    const { signature, message, address } = req.body;
+
+    if (!signature || !message || !address) {
+      return res.status(400).json({ 
+        error: 'Missing required authentication fields: signature, message, address' 
+      });
+    }
+
+    // Verify the signature
+    const signerAddress = ethers.verifyMessage(message, signature);
+    
+    if (signerAddress.toLowerCase() !== address.toLowerCase()) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    // Add verified address to request
+    req.verifiedAddress = signerAddress;
+    next();
+  } catch (error) {
+    console.error('Signature validation error:', error);
+    res.status(401).json({ error: 'Signature validation failed' });
+  }
+};
+
 const router = express.Router();
 
 /**
@@ -139,17 +166,65 @@ router.get('/events', asyncHandler(async (req, res) => {
   }
 
   try {
-    // Get events for this organizer by calling the main events endpoint
-    const eventsResponse = await fetch(`${req.protocol}://${req.get('host')}/api/events?organizer=${address}`);
-    const eventsData = await eventsResponse.json();
+    // Directly fetch events from the contract instead of making internal HTTP calls
+    const contract = getEventManagerContract();
+    const events = [];
+    const maxEventId = 100; // Reasonable limit for MVP
+    
+    for (let i = 1; i <= maxEventId; i++) {
+      try {
+        const eventData = await contract.getEvent(i);
+        
+        if (eventData[0] && eventData[0].toString() !== '0') {
+          // Filter by organizer
+          if (eventData[1].toLowerCase() === address.toLowerCase()) {
+            const event = {
+              id: parseInt(eventData[0].toString()),
+              organizer: eventData[1],
+              title: eventData[2],
+              description: eventData[3],
+              location: eventData[4],
+              startDate: parseInt(eventData[5].toString()),
+              endDate: parseInt(eventData[6].toString()),
+              active: eventData[8],
+              status: getEventStatus(parseInt(eventData[5].toString()), parseInt(eventData[6].toString()))
+            };
 
-    res.json(eventsData);
+            if (event.active) {
+              events.push(event);
+            }
+          }
+        }
+      } catch (error) {
+        // Event doesn't exist, continue
+        continue;
+      }
+    }
+
+    res.json({
+      events: events,
+      pagination: {
+        currentPage: 1,
+        totalPages: 1,
+        totalEvents: events.length,
+        hasNext: false,
+        hasPrev: false
+      }
+    });
   } catch (error) {
     console.error('Error fetching organizer events:', error);
     res.status(500).json({ error: 'Failed to fetch organizer events' });
   }
 }));
 
+// Helper function
+function getEventStatus(startDate, endDate) {
+  const now = Math.floor(Date.now() / 1000);
+  
+  if (now < startDate) return 'upcoming';
+  if (now >= startDate && now <= endDate) return 'live';
+  return 'ended';
+}
 /**
  * @route POST /api/organizer/events/:id/tiers
  * @desc Add a ticket tier to an existing event

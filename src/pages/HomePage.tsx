@@ -30,6 +30,20 @@ export const HomePage: React.FC = () => {
     try {
       setLoading(true);
       const response = await fetch('/api/events');
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error:', response.status, errorText);
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        throw new Error('Server returned non-JSON response');
+      }
+      
       const data = await response.json();
       setEvents(data.events || []);
     } catch (error) {
