@@ -118,7 +118,7 @@ export default async function handler(req, res) {
       const tempEventId = Date.now();
       
       // Calculate total listing fee (0 for testing)
-      const listingFee = ethers.parseEther('0');
+      const listingFee = ethers.parseEther('1');
 
       return res.status(200).json({
         success: true,

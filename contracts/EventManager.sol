@@ -24,7 +24,7 @@ contract EventManager is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
     address public constant MPX_TOKEN = 0x0000000000000000000000000000000000000002; // Replace with actual
     
     // Platform listing fee (0.1 token units)
-    uint256 public constant LISTING_FEE = 0; // 0 for testing purposes
+    uint256 public constant LISTING_FEE = 1 ether; // 1 XFI listing fee
     
     Counters.Counter private _eventIds;
     Counters.Counter private _ticketIds;

@@ -103,50 +103,122 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
     setIsCreating(true);
 
     try {
-      // Sign the creation message
-      const message = `Create event: ${eventData.title} at ${eventData.location}`;
-      const signature = await signer.signMessage(message);
 
-      // Prepare event data
-      const requestData = {
-        ...eventData,
-        startDate: Math.floor(new Date(eventData.startDate).getTime() / 1000),
-        endDate: Math.floor(new Date(eventData.endDate).getTime() / 1000),
-        feeTokenType: ['XFI', 'XUSD', 'MPX'].indexOf(eventData.feeTokenType),
-        organizerAddress: account,
-        tiers: tiers.map(tier => ({
-          ...tier,
-          tokenType: ['XFI', 'XUSD', 'MPX'].indexOf(tier.tokenType)
-        })),
-        signature,
-        message,
-        address: account
+
+
+
+      // Step 1: Create the smart contract instance
+      const contractAddress = process.env.VITE_EVENT_MANAGER_CONTRACT || '0x1234567890123456789012345678901234567890'; // Replace with actual deployed contract
+      
+      const contractABI = [
+        "function createEvent(string title, string description, string location, uint256 startDate, uint256 endDate, string metadataURI, uint8 feeTokenType) payable returns (uint256)"
+      ];
+      
+      const contract = new ethers.Contract(contractAddress, contractABI, signer);
+      
+      // Step 2: Prepare transaction data
+      const startTimestamp = Math.floor(new Date(eventData.startDate).getTime() / 1000);
+      const endTimestamp = Math.floor(new Date(eventData.endDate).getTime() / 1000);
+      const feeTokenTypeIndex = ['XFI', 'XUSD', 'MPX'].indexOf(eventData.feeTokenType);
+      
+      // Create metadata URI
+      const metadata = {
+        title: eventData.title,
+        description: eventData.description,
+        location: eventData.location,
+        image: 'https://images.pexels.com/photos/2747449/pexels-photo-2747449.jpeg',
+        startDate: startTimestamp,
+        endDate: endTimestamp,
+        organizer: account
       };
-
-      const response = await fetch('/api/organizer/events', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestData),
+      const metadataURI = `data:application/json;base64,${btoa(JSON.stringify(metadata))}`;
+      
+      // Step 3: Calculate listing fee
+      const listingFee = ethers.parseEther('1'); // 1 token
+      
+      toast.info('Please confirm the transaction in your wallet...');
+      
+      // Step 4: Execute the smart contract transaction
+      const tx = await contract.createEvent(
+        eventData.title,
+        eventData.description,
+        eventData.location,
+        startTimestamp,
+        endTimestamp,
+        metadataURI,
+        feeTokenTypeIndex,
+        { 
+          value: feeTokenTypeIndex === 0 ? listingFee : 0, // Only send XFI if XFI is selected
+          gasLimit: 500000 // Set reasonable gas limit
+        }
+      );
+      
+      toast.info('Transaction submitted! Waiting for confirmation...');
+      
+      // Step 5: Wait for transaction confirmation
+      const receipt = await tx.wait();
+      
+      // Step 6: Extract event ID from transaction logs
+      const eventCreatedLog = receipt.logs.find(log => {
+        try {
+          const parsed = contract.interface.parseLog(log);
+          return parsed.name === 'EventCreated';
+        } catch {
+          return false;
+        }
       });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        toast.success('Event creation prepared! Please confirm the transaction in your wallet.');
-        
-        // In a real implementation, you would execute the smart contract transaction here
-        // For this MVP, we'll simulate success
-        setTimeout(() => {
-          onSuccess();
-        }, 2000);
-      } else {
-        throw new Error(result.error || 'Failed to create event');
+      
+      let eventId = null;
+      if (eventCreatedLog) {
+        const parsed = contract.interface.parseLog(eventCreatedLog);
+        eventId = parsed.args.eventId.toString();
       }
+      
+      toast.success(`Event created successfully! ${eventId ? `Event ID: ${eventId}` : ''}`);
+      
+      // Step 7: Add ticket tiers if event creation was successful
+      if (eventId && tiers.length > 0) {
+        toast.info('Adding ticket tiers...');
+        
+        const tierABI = [
+          "function addTicketTier(uint256 eventId, string tierName, uint256 price, uint256 maxSupply, uint8 tokenType) external"
+        ];
+        
+        const tierContract = new ethers.Contract(contractAddress, tierABI, signer);
+        
+        for (let i = 0; i < tiers.length; i++) {
+          const tier = tiers[i];
+          const tierTx = await tierContract.addTicketTier(
+            eventId,
+            tier.name,
+            ethers.parseEther(tier.price),
+            parseInt(tier.maxSupply),
+            ['XFI', 'XUSD', 'MPX'].indexOf(tier.tokenType)
+          );
+          
+          await tierTx.wait();
+          toast.success(`Tier "${tier.name}" added successfully!`);
+        }
+      }
+      
+      // Success - close modal and refresh
+      setTimeout(() => {
+        onSuccess();
+      }, 1000);
+      
     } catch (error) {
       console.error('Error creating event:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to create event');
+      
+      // Handle specific error types
+      if (error.code === 'ACTION_REJECTED') {
+        toast.error('Transaction was rejected by user');
+      } else if (error.code === 'INSUFFICIENT_FUNDS') {
+        toast.error('Insufficient funds for transaction');
+      } else if (error.message?.includes('user rejected')) {
+        toast.error('Transaction was rejected by user');
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Failed to create event');
+      }
     } finally {
       setIsCreating(false);
     }
@@ -228,15 +300,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Listing Fee Token
               </label>
-              <p className="text-xs text-gray-500 mb-2">Free for testing purposes</p>
+              <p className="text-xs text-gray-500 mb-2">1 XFI listing fee required</p>
               <select
                 value={eventData.feeTokenType}
                 onChange={(e) => handleEventDataChange('feeTokenType', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="XFI">XFI - Free</option>
-                <option value="XUSD">XUSD - Free</option>
-                <option value="MPX">MPX - Free</option>
+                <option value="XFI">XFI - 1 XFI</option>
+                <option value="XUSD">XUSD - 1 XUSD</option>
+                <option value="MPX">MPX - 1 MPX</option>
               </select>
             </div>
           </div>
@@ -355,7 +427,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
               </div>
               <div>
                 <span className="text-sm font-medium text-gray-700">Listing Fee:</span>
-                <p className="text-gray-900">0 {eventData.feeTokenType} (Free for testing)</p>
+                <p className="text-gray-900">1 {eventData.feeTokenType}</p>
               </div>
               <div>
                 <span className="text-sm font-medium text-gray-700">Ticket Tiers:</span>
@@ -371,8 +443,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
 
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <p className="text-yellow-800 text-sm">
-                <strong>Note:</strong> Creating this event will require a transaction to deploy your event on the CrossFi blockchain. 
-                Listing fee is currently set to 0 for testing purposes.
+                <strong>Note:</strong> Creating this event will require a blockchain transaction with a 1 {eventData.feeTokenType} listing fee. 
+                Make sure you have sufficient balance in your wallet.
               </p>
             </div>
           </div>
