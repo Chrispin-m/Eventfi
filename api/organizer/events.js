@@ -57,7 +57,7 @@ export default async function handler(req, res) {
       }
 
       try {
-        const signerAddress = ethers.verifyMessage(message, signature);
+        const signerAddress = ethers.utils.verifyMessage(message, signature);
         if (signerAddress.toLowerCase() !== organizerAddress.toLowerCase()) {
           return res.status(401).json({ error: 'Invalid signature' });
         }
@@ -108,7 +108,7 @@ export default async function handler(req, res) {
         
         return {
           name: tier.name,
-          price: ethers.parseEther(tier.price.toString()),
+          price: ethers.utils.parseEther(tier.price.toString()),
           maxSupply: parseInt(tier.maxSupply),
           tokenType: tier.tokenType || 0
         };
@@ -118,7 +118,7 @@ export default async function handler(req, res) {
       const tempEventId = Date.now();
       
       // Calculate total listing fee (0 for testing)
-      const listingFee = ethers.parseEther('1');
+      const listingFee = ethers.utils.parseEther('1');
 
       return res.status(200).json({
         success: true,
@@ -126,7 +126,7 @@ export default async function handler(req, res) {
         tiers: validatedTiers,
         transactionInfo: {
           contractAddress: process.env.EVENT_MANAGER_CONTRACT,
-          listingFee: ethers.formatEther(listingFee),
+          listingFee: ethers.utils.formatEther(listingFee),
           feeTokenType: eventData.feeTokenType,
           tempEventId,
           publicURL: `${process.env.VERCEL_URL || 'http://localhost:3000'}/event/${tempEventId}`
@@ -151,7 +151,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Organizer address is required' });
       }
 
-      if (!ethers.isAddress(address)) {
+      if (!ethers.utils.isAddress(address)) {
         return res.status(400).json({ error: 'Invalid organizer address' });
       }
 

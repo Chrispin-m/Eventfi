@@ -117,7 +117,7 @@ router.post('/events', asyncHandler(async (req, res) => {
       
       return {
         name: tier.name,
-        price: ethers.parseEther(tier.price.toString()),
+        price: ethers.utils.parseEther(tier.price.toString()),
         maxSupply: parseInt(tier.maxSupply),
         tokenType: tier.tokenType || 0 // Default to XFI
       };
@@ -127,7 +127,7 @@ router.post('/events', asyncHandler(async (req, res) => {
     const tempEventId = Date.now();
     
     // Calculate total listing fee
-    const listingFee = ethers.parseEther('0'); // 0 for testing
+    const listingFee = ethers.utils.parseEther('0'); // 0 for testing
 
     res.json({
       success: true,
@@ -135,7 +135,7 @@ router.post('/events', asyncHandler(async (req, res) => {
       tiers: validatedTiers,
       transactionInfo: {
         contractAddress: process.env.EVENT_MANAGER_CONTRACT,
-        listingFee: ethers.formatEther(listingFee),
+        listingFee: ethers.utils.formatEther(listingFee),
         feeTokenType: eventData.feeTokenType,
         tempEventId,
         publicURL: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/event/${tempEventId}`
@@ -161,7 +161,7 @@ router.get('/events', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Organizer address is required' });
   }
 
-  if (!ethers.isAddress(address)) {
+  if (!ethers.utils.isAddress(address)) {
     return res.status(400).json({ error: 'Invalid organizer address' });
   }
 

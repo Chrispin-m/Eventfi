@@ -28,7 +28,7 @@ const EVENT_MANAGER_ABI = [
 // Initialize provider
 const network = process.env.NODE_ENV === 'production' ? 'mainnet' : 'testnet';
 const config = CROSSFI_CONFIG[network];
-const provider = new ethers.JsonRpcProvider(config.rpcUrl);
+const provider = new ethers.providers.JsonRpcProvider(config.rpcUrl);
 
 // Get contract instance
 function getEventManagerContract() {

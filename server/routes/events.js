@@ -37,7 +37,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
         tiers.push({
           id: i,
           name: tierData[0],
-          price: ethers.formatEther(tierData[1]),
+          price: ethers.utils.formatEther(tierData[1]),
           maxSupply: parseInt(tierData[2].toString()),
           currentSupply: parseInt(tierData[3].toString()),
           tokenType: ['XFI', 'XUSD', 'MPX'][parseInt(tierData[4].toString())],
@@ -159,7 +159,7 @@ router.post('/:id/purchase', asyncHandler(async (req, res) => {
   try {
     // Verify the buyer's signature (simplified for MVP)
     const message = `Purchase ticket for event ${id}, tier ${tierId}`;
-    const signerAddress = ethers.verifyMessage(message, signature);
+    const signerAddress = ethers.utils.verifyMessage(message, signature);
     
     if (signerAddress.toLowerCase() !== buyerAddress.toLowerCase()) {
       return res.status(401).json({ error: 'Invalid signature' });
@@ -191,7 +191,7 @@ router.post('/:id/purchase', asyncHandler(async (req, res) => {
       purchaseDetails: {
         eventId: id,
         tierId: tierId,
-        price: ethers.formatEther(price),
+        price: ethers.utils.formatEther(price),
         tokenType: ['XFI', 'XUSD', 'MPX'][parseInt(tierData[4].toString())],
         metadataURI: metadataURI,
         qrCode: ticketMetadata.qrData,

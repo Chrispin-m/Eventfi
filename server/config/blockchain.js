@@ -34,14 +34,14 @@ export const CONTRACT_ADDRESSES = {
 // Platform configuration
 export const PLATFORM_CONFIG = {
   address: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A',
-  listingFee: ethers.parseEther('1'), // 1 XFI listing fee
+  listingFee: ethers.utils.parseEther('1'), // 1 XFI listing fee
 };
 
 // Initialize providers
 const network = process.env.NODE_ENV === 'production' ? 'mainnet' : 'testnet';
 const config = CROSSFI_CONFIG[network];
 
-export const provider = new ethers.JsonRpcProvider(config.rpcUrl);
+export const provider = new ethers.providers.JsonRpcProvider(config.rpcUrl);
 
 // Initialize wallet for contract interactions
 export const wallet = process.env.PRIVATE_KEY 

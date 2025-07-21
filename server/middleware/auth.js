@@ -14,7 +14,7 @@ export const validateSignature = (req, res, next) => {
     }
 
     // Verify the signature
-    const signerAddress = ethers.verifyMessage(message, signature);
+    const signerAddress = ethers.utils.verifyMessage(message, signature);
     
     if (signerAddress.toLowerCase() !== address.toLowerCase()) {
       return res.status(401).json({ error: 'Invalid signature' });

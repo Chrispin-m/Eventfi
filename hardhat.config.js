@@ -26,13 +26,13 @@ module.exports = {
       url: CROSSFI_TESTNET_RPC,
       accounts: [PRIVATE_KEY],
       chainId: 4157,
-      gasPrice: 10000000000,
+      gasPrice: 10_000_000_000,
     },
     crossfi_mainnet: {
       url: CROSSFI_MAINNET_RPC,
       accounts: [PRIVATE_KEY],
       chainId: 4158,
-      gasPrice: 10000000000,
+      gasPrice: 1_000_000_000,
     },
   },
   gasReporter: {

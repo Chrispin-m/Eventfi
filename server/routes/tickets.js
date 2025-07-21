@@ -141,7 +141,7 @@ router.post('/:id/use', asyncHandler(async (req, res) => {
   try {
     // Verify organizer signature
     const message = `Use ticket ${id}`;
-    const signerAddress = ethers.verifyMessage(message, signature);
+    const signerAddress = ethers.utils.verifyMessage(message, signature);
     
     if (signerAddress.toLowerCase() !== organizerAddress.toLowerCase()) {
       return res.status(401).json({ error: 'Invalid organizer signature' });

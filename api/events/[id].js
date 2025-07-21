@@ -104,7 +104,7 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     try {
-      const { id } = req.query;
+      const signerAddress = ethers.utils.verifyMessage(message, signature);
       
       if (!id || isNaN(id)) {
         return res.status(400).json({ error: 'Invalid event ID' });

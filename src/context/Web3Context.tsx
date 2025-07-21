@@ -10,7 +10,7 @@ import { ethers } from 'ethers';
 interface Web3ContextType {
   account: string | null;
   provider: ethers.providers.Web3Provider | null;
-  signer: ethers.providers.JsonRpcSigner | null;
+  signer: ethers.Signer | null;
   chainId: number | null;
   isConnected: boolean;
   isConnecting: boolean;
@@ -32,7 +32,7 @@ const CROSSFI_CHAIN_CONFIG = {
 export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [account, setAccount] = useState<string | null>(null);
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
-  const [signer, setSigner] = useState<ethers.providers.JsonRpcSigner | null>(null);
+  const [signer, setSigner] = useState<ethers.Signer | null>(null);
   const [chainId, setChainId] = useState<number | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
 
