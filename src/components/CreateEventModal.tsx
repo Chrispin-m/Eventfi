@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, Calendar, MapPin, DollarSign } from 'lucide-react';
+import { ethers } from 'ethers';
+import { X, Plus, Trash2 } from 'lucide-react';
 import { useWeb3 } from '../context/Web3Context';
 import { toast } from 'react-toastify';
-import { ethers } from 'ethers';
 
 interface TicketTier {
   name: string;
@@ -28,198 +28,151 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
     location: '',
     startDate: '',
     endDate: '',
-    feeTokenType: 'XFI' as 'XFI' | 'XUSD' | 'MPX'
+    feeTokenType: 'XFI' as 'XFI' | 'XUSD' | 'MPX',
   });
 
   // Ticket tiers
   const [tiers, setTiers] = useState<TicketTier[]>([
-    { name: 'General Admission', price: '0.1', maxSupply: '100', tokenType: 'XFI' }
+    { name: 'General Admission', price: '0.1', maxSupply: '100', tokenType: 'XFI' },
   ]);
 
-  const handleEventDataChange = (field: string, value: string) => {
+  const handleEventDataChange = (field: keyof typeof eventData, value: string) =>
     setEventData(prev => ({ ...prev, [field]: value }));
+
+  const addTier = () =>
+    setTiers(prev => [...prev, { name: '', price: '', maxSupply: '', tokenType: 'XFI' }]);
+
+  const removeTier = (i: number) => {
+    if (tiers.length > 1) setTiers(prev => prev.filter((_, idx) => idx !== i));
   };
 
-  const addTier = () => {
-    setTiers(prev => [...prev, { 
-      name: '', 
-      price: '', 
-      maxSupply: '', 
-      tokenType: 'XFI' 
-    }]);
-  };
-
-  const removeTier = (index: number) => {
-    if (tiers.length > 1) {
-      setTiers(prev => prev.filter((_, i) => i !== index));
-    }
-  };
-
-  const updateTier = (index: number, field: keyof TicketTier, value: string) => {
-    setTiers(prev => prev.map((tier, i) => 
-      i === index ? { ...tier, [field]: value } : tier
-    ));
-  };
+  const updateTier = (i: number, field: keyof TicketTier, value: string) =>
+    setTiers(prev =>
+      prev.map((t, idx) => (idx === i ? { ...t, [field]: value } : t))
+    );
 
   const validateForm = () => {
-    if (!eventData.title || !eventData.description || !eventData.location || 
-        !eventData.startDate || !eventData.endDate) {
+    const now = Date.now();
+    if (
+      !eventData.title ||
+      !eventData.description ||
+      !eventData.location ||
+      !eventData.startDate ||
+      !eventData.endDate
+    ) {
       toast.error('Please fill in all event details');
       return false;
     }
-
-    if (new Date(eventData.startDate) <= new Date()) {
+    const startTs = new Date(eventData.startDate).getTime();
+    const endTs = new Date(eventData.endDate).getTime();
+    if (startTs <= now) {
       toast.error('Start date must be in the future');
       return false;
     }
-
-    if (new Date(eventData.endDate) <= new Date(eventData.startDate)) {
+    if (endTs <= startTs) {
       toast.error('End date must be after start date');
       return false;
     }
-
-    for (const tier of tiers) {
-      if (!tier.name || !tier.price || !tier.maxSupply) {
+    for (const t of tiers) {
+      if (!t.name || !t.price || !t.maxSupply) {
         toast.error('Please fill in all tier details');
         return false;
       }
-      
-      if (parseFloat(tier.price) <= 0) {
+      if (Number(t.price) <= 0) {
         toast.error('Tier prices must be greater than 0');
         return false;
       }
-      
-      if (parseInt(tier.maxSupply) <= 0) {
+      if (Number(t.maxSupply) <= 0) {
         toast.error('Tier max supply must be greater than 0');
         return false;
       }
     }
-
     return true;
   };
 
   const handleCreateEvent = async () => {
     if (!validateForm() || !account || !signer) return;
-
     setIsCreating(true);
 
     try {
+      const contractAddress =
+        import.meta.env.VITE_EVENT_MANAGER_CONTRACT ||
+        '0x1234567890123456789012345678901234567890';
 
-
-
-
-      // Step 1: Create the smart contract instance
-      const contractAddress = process.env.VITE_EVENT_MANAGER_CONTRACT || '0x1234567890123456789012345678901234567890'; // Replace with actual deployed contract
-      
       const contractABI = [
-        "function createEvent(string title, string description, string location, uint256 startDate, uint256 endDate, string metadataURI, uint8 feeTokenType) payable returns (uint256)"
+        'function createEvent(string,string,string,uint256,uint256,string,uint8) payable returns (uint256)',
+        'event EventCreated(uint256 indexed eventId, address organizer)'
       ];
-      
       const contract = new ethers.Contract(contractAddress, contractABI, signer);
-      
-      // Step 2: Prepare transaction data
-      const startTimestamp = Math.floor(new Date(eventData.startDate).getTime() / 1000);
-      const endTimestamp = Math.floor(new Date(eventData.endDate).getTime() / 1000);
-      const feeTokenTypeIndex = ['XFI', 'XUSD', 'MPX'].indexOf(eventData.feeTokenType);
-      
-      // Create metadata URI
+
+      const startTs = Math.floor(new Date(eventData.startDate).getTime() / 1000);
+      const endTs = Math.floor(new Date(eventData.endDate).getTime() / 1000);
+      const feeTokenIdx = ['XFI', 'XUSD', 'MPX'].indexOf(eventData.feeTokenType);
+
+      // build on‑chain metadata
       const metadata = {
         title: eventData.title,
         description: eventData.description,
         location: eventData.location,
-        image: 'https://images.pexels.com/photos/2747449/pexels-photo-2747449.jpeg',
-        startDate: startTimestamp,
-        endDate: endTimestamp,
-        organizer: account
+        startDate: startTs,
+        endDate: endTs,
+        organizer: account,
       };
-      const metadataURI = `data:application/json;base64,${btoa(JSON.stringify(metadata))}`;
-      
-      // Step 3: Calculate listing fee
-      const listingFee = ethers.parseEther('1'); // 1 token
-      
-      toast.info('Please confirm the transaction in your wallet...');
-      
-      // Step 4: Execute the smart contract transaction
+      const metadataURI = `data:application/json;base64,${btoa(
+        JSON.stringify(metadata)
+      )}`;
+
+      const listingFee = ethers.utils.parseEther('1'); // v5 usage
+
+      toast.info('Confirm the transaction in your wallet...');
       const tx = await contract.createEvent(
         eventData.title,
         eventData.description,
         eventData.location,
-        startTimestamp,
-        endTimestamp,
+        startTs,
+        endTs,
         metadataURI,
-        feeTokenTypeIndex,
-        { 
-          value: feeTokenTypeIndex === 0 ? listingFee : 0, // Only send XFI if XFI is selected
-          gasLimit: 500000 // Set reasonable gas limit
+        feeTokenIdx,
+        {
+          value: feeTokenIdx === 0 ? listingFee : 0,
+          gasLimit: 500_000,
         }
       );
-      
-      toast.info('Transaction submitted! Waiting for confirmation...');
-      
-      // Step 5: Wait for transaction confirmation
+      toast.info('Waiting for confirmation...');
       const receipt = await tx.wait();
-      
-      // Step 6: Extract event ID from transaction logs
-      const eventCreatedLog = receipt.logs.find(log => {
-        try {
-          const parsed = contract.interface.parseLog(log);
-          return parsed.name === 'EventCreated';
-        } catch {
-          return false;
-        }
-      });
-      
-      let eventId = null;
-      if (eventCreatedLog) {
-        const parsed = contract.interface.parseLog(eventCreatedLog);
-        eventId = parsed.args.eventId.toString();
-      }
-      
-      toast.success(`Event created successfully! ${eventId ? `Event ID: ${eventId}` : ''}`);
-      
-      // Step 7: Add ticket tiers if event creation was successful
-      if (eventId && tiers.length > 0) {
-        toast.info('Adding ticket tiers...');
-        
-        const tierABI = [
-          "function addTicketTier(uint256 eventId, string tierName, uint256 price, uint256 maxSupply, uint8 tokenType) external"
-        ];
-        
+
+      // parse EventCreated
+      const parsedLog = receipt.events?.find((e) => e.event === 'EventCreated');
+      const eventId = parsedLog?.args?.eventId.toString() || null;
+      toast.success(`Event created!${eventId ? ` ID: ${eventId}` : ''}`);
+
+      // add tiers
+      if (eventId && tiers.length) {
+        const tierABI = ['function addTicketTier(uint256,string,uint256,uint256,uint8)'];
         const tierContract = new ethers.Contract(contractAddress, tierABI, signer);
-        
-        for (let i = 0; i < tiers.length; i++) {
-          const tier = tiers[i];
+        for (const t of tiers) {
           const tierTx = await tierContract.addTicketTier(
             eventId,
-            tier.name,
-            ethers.parseEther(tier.price),
-            parseInt(tier.maxSupply),
-            ['XFI', 'XUSD', 'MPX'].indexOf(tier.tokenType)
+            t.name,
+            ethers.utils.parseEther(t.price),
+            Number(t.maxSupply),
+            ['XFI', 'XUSD', 'MPX'].indexOf(t.tokenType)
           );
-          
           await tierTx.wait();
-          toast.success(`Tier "${tier.name}" added successfully!`);
+          toast.success(`Tier "${t.name}" added.`);
         }
       }
-      
-      // Success - close modal and refresh
-      setTimeout(() => {
-        onSuccess();
-      }, 1000);
-      
-    } catch (error) {
-      console.error('Error creating event:', error);
-      
-      // Handle specific error types
-      if (error.code === 'ACTION_REJECTED') {
-        toast.error('Transaction was rejected by user');
-      } else if (error.code === 'INSUFFICIENT_FUNDS') {
-        toast.error('Insufficient funds for transaction');
-      } else if (error.message?.includes('user rejected')) {
-        toast.error('Transaction was rejected by user');
-      } else {
-        toast.error(error instanceof Error ? error.message : 'Failed to create event');
-      }
+
+      onSuccess();
+    } catch (err: any) {
+      console.error(err);
+      const msg =
+        err.code === 4001
+          ? 'Transaction rejected'
+          : err.code === 'INSUFFICIENT_FUNDS'
+          ? 'Insufficient funds'
+          : err.message || 'Failed to create event';
+      toast.error(msg);
     } finally {
       setIsCreating(false);
     }
