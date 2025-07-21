@@ -1,10 +1,16 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from 'react';
 import { ethers } from 'ethers';
 
 interface Web3ContextType {
   account: string | null;
-  provider: ethers.BrowserProvider | null;
-  signer: ethers.JsonRpcSigner | null;
+  provider: ethers.providers.Web3Provider | null;
+  signer: ethers.providers.JsonRpcSigner | null;
   chainId: number | null;
   isConnected: boolean;
   isConnecting: boolean;
@@ -16,86 +22,107 @@ interface Web3ContextType {
 const Web3Context = createContext<Web3ContextType | null>(null);
 
 const CROSSFI_CHAIN_CONFIG = {
-  chainId: '0x103D',
+  chainId: '0x103D', // Hex for 4157
   chainName: 'CrossFi Testnet',
-  nativeCurrency: {
-    name: 'XFI',
-    symbol: 'XFI',
-    decimals: 18,
-  },
+  nativeCurrency: { name: 'XFI', symbol: 'XFI', decimals: 18 },
   rpcUrls: ['https://rpc.testnet.ms'],
   blockExplorerUrls: ['https://scan.testnet.ms'],
 };
 
 export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [account, setAccount] = useState<string | null>(null);
-  const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null);
-  const [signer, setSigner] = useState<ethers.JsonRpcSigner | null>(null);
+  const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
+  const [signer, setSigner] = useState<ethers.providers.JsonRpcSigner | null>(null);
   const [chainId, setChainId] = useState<number | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
 
-  const isConnected = !!account && !!provider;
+  const isConnected = Boolean(account && provider);
 
+  // Helper: detect mobile browsers
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  // Initialize on mount
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     checkConnection();
-    setupEventListeners();
-
+    window.ethereum?.on('accountsChanged', handleAccountsChanged);
+    window.ethereum?.on('chainChanged', handleChainChanged);
     return () => {
-      cleanupEventListeners();
+      window.ethereum?.removeListener('accountsChanged', handleAccountsChanged);
+      window.ethereum?.removeListener('chainChanged', handleChainChanged);
     };
   }, []);
 
+  // Attempt to restore existing connection
   const checkConnection = async () => {
-    if (window.ethereum) {
-      try {
-        const tempProvider = new ethers.BrowserProvider(window.ethereum);
-        const accounts = await tempProvider.listAccounts();
-        if (accounts.length > 0) {
-          const tempSigner = await tempProvider.getSigner();
-          const network = await tempProvider.getNetwork();
-          setProvider(tempProvider);
-          setSigner(tempSigner);
-          setAccount(accounts[0].address);
-          setChainId(Number(network.chainId));
-        }
-      } catch (err) {
-        console.error('Error checking wallet connection:', err);
+    try {
+      // EIP‑1193 provider
+      const eth = (window as any).ethereum || (window as any).web3?.currentProvider;
+      if (!eth) return;
+      const web3p = new ethers.providers.Web3Provider(eth, 'any');
+      const accs = await web3p.listAccounts();
+      if (accs.length) {
+        const net = await web3p.getNetwork();
+        setProvider(web3p);
+        setSigner(web3p.getSigner());
+        setAccount(accs[0]);
+        setChainId(net.chainId);
       }
+    } catch (err) {
+      console.error('checkConnection:', err);
     }
   };
 
+  function handleAccountsChanged(accounts: string[]) {
+    if (accounts.length === 0) return disconnectWallet();
+    setAccount(accounts[0]);
+  }
+
+  function handleChainChanged(raw: string) {
+    const id = parseInt(raw, 16);
+    setChainId(id);
+    // Optionally: you could force refresh or re-init your contracts here
+  }
+
   const connectWallet = async () => {
-    if (!window.ethereum) {
-      alert('Please install MetaMask or a Web3 wallet');
+    if (typeof window === 'undefined') {
+      throw new Error('Window object not found');
+    }
+    const eth = (window as any).ethereum;
+    if (!eth) {
+      throw new Error('MetaMask (or other wallet) not detected');
+    }
+
+    // For mobile: deep‑link into the MetaMask app if needed
+    if (isMobile && !eth.isMetaMask) {
+      const dappUrl = window.location.host + window.location.pathname;
+      const deeplink = `https://metamask.app.link/dapp/${dappUrl}`;
+      window.open(deeplink, '_blank');
       return;
     }
 
     setIsConnecting(true);
     try {
-      const tempProvider = new ethers.BrowserProvider(window.ethereum);
+      const web3p = new ethers.providers.Web3Provider(eth, 'any');
+      // Request access
+      await web3p.send('eth_requestAccounts', []);
+      const signer = web3p.getSigner();
+      const address = await signer.getAddress();
+      const net = await web3p.getNetwork();
 
-      const accounts = await window.ethereum.request({
-        method: 'eth_requestAccounts',
-      });
+      setProvider(web3p);
+      setSigner(signer);
+      setAccount(address);
+      setChainId(net.chainId);
 
-      if (!accounts || accounts.length === 0) {
-        throw new Error('No accounts found.');
+      // If on wrong chain, switch
+      if (net.chainId !== 4157) {
+        try { await switchToCrossFi(); }
+        catch { /* user may ignore */ }
       }
-
-      const tempSigner = await tempProvider.getSigner();
-      const network = await tempProvider.getNetwork();
-
-      setProvider(tempProvider);
-      setSigner(tempSigner);
-      setAccount(accounts[0]);
-      setChainId(Number(network.chainId));
-
-      if (Number(network.chainId) !== 4157) {
-        await switchToCrossFi();
-      }
-
-    } catch (error: any) {
-      console.error('Wallet connection error:', error.message);
+    } catch (err: any) {
+      console.error('connectWallet:', err);
+      throw new Error(err.message || 'Connection failed');
     } finally {
       setIsConnecting(false);
     }
@@ -109,82 +136,56 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const switchToCrossFi = async () => {
-    if (!window.ethereum) throw new Error('No Ethereum provider found');
-
+    const eth = (window as any).ethereum;
+    if (!eth) throw new Error('MetaMask not installed');
     try {
-      await window.ethereum.request({
+      await eth.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: CROSSFI_CHAIN_CONFIG.chainId }],
       });
     } catch (switchError: any) {
+      // Add network if missing
       if (switchError.code === 4902) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_addEthereumChain',
-            params: [CROSSFI_CHAIN_CONFIG],
-          });
-        } catch (addError) {
-          console.error('Failed to add network:', addError);
-        }
+        await eth.request({
+          method: 'wallet_addEthereumChain',
+          params: [CROSSFI_CHAIN_CONFIG],
+        });
       } else {
+        console.error('switchToCrossFi:', switchError);
         throw switchError;
       }
     }
   };
 
-  const handleAccountsChanged = (accounts: string[]) => {
-    if (accounts.length === 0) {
-      disconnectWallet();
-    } else {
-      setAccount(accounts[0]);
-    }
-  };
-
-  const handleChainChanged = (hexChainId: string) => {
-    const parsedId = parseInt(hexChainId, 16);
-    setChainId(parsedId);
-    checkConnection(); // signer/provider/account
-  };
-
-  const setupEventListeners = () => {
-    if (window.ethereum?.on) {
-      window.ethereum.on('accountsChanged', handleAccountsChanged);
-      window.ethereum.on('chainChanged', handleChainChanged);
-    }
-  };
-
-  const cleanupEventListeners = () => {
-    if (window.ethereum?.removeListener) {
-      window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
-      window.ethereum.removeListener('chainChanged', handleChainChanged);
-    }
-  };
-
-  const value: Web3ContextType = {
-    account,
-    provider,
-    signer,
-    chainId,
-    isConnected,
-    isConnecting,
-    connectWallet,
-    disconnectWallet,
-    switchToCrossFi,
-  };
-
-  return <Web3Context.Provider value={value}>{children}</Web3Context.Provider>;
+  return (
+    <Web3Context.Provider
+      value={{
+        account,
+        provider,
+        signer,
+        chainId,
+        isConnected,
+        isConnecting,
+        connectWallet,
+        disconnectWallet,
+        switchToCrossFi,
+      }}
+    >
+      {children}
+    </Web3Context.Provider>
+  );
 };
 
 export const useWeb3 = () => {
-  const context = useContext(Web3Context);
-  if (!context) {
-    throw new Error('useWeb3 must be used within a Web3Provider');
-  }
-  return context;
+  const ctx = useContext(Web3Context);
+  if (!ctx) throw new Error('useWeb3 must be used inside Web3Provider');
+  return ctx;
 };
 
+// extend TS window for typings
 declare global {
   interface Window {
     ethereum?: any;
+    web3?: any;
   }
 }
