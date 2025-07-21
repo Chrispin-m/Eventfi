@@ -16,7 +16,7 @@ interface Web3ContextType {
 const Web3Context = createContext<Web3ContextType | null>(null);
 
 const CROSSFI_CHAIN_CONFIG = {
-  chainId: '0x103D', // 4157 in hex (testnet)
+  chainId: '0x103D',
   chainName: 'CrossFi Testnet',
   nativeCurrency: {
     name: 'XFI',
@@ -39,97 +39,63 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     checkConnection();
     setupEventListeners();
+
+    return () => {
+      cleanupEventListeners();
+    };
   }, []);
 
   const checkConnection = async () => {
-    if (typeof window.ethereum !== 'undefined') {
+    if (window.ethereum) {
       try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const accounts = await provider.listAccounts();
-        
+        const tempProvider = new ethers.BrowserProvider(window.ethereum);
+        const accounts = await tempProvider.listAccounts();
         if (accounts.length > 0) {
-          const signer = await provider.getSigner();
-          const network = await provider.getNetwork();
-          
-          setProvider(provider);
-          setSigner(signer);
+          const tempSigner = await tempProvider.getSigner();
+          const network = await tempProvider.getNetwork();
+          setProvider(tempProvider);
+          setSigner(tempSigner);
           setAccount(accounts[0].address);
           setChainId(Number(network.chainId));
         }
-      } catch (error) {
-        console.error('Error checking connection:', error);
+      } catch (err) {
+        console.error('Error checking wallet connection:', err);
       }
     }
-  };
-
-  const setupEventListeners = () => {
-    if (typeof window.ethereum !== 'undefined') {
-      window.ethereum.on('accountsChanged', handleAccountsChanged);
-      window.ethereum.on('chainChanged', handleChainChanged);
-    }
-  };
-
-  const handleAccountsChanged = (accounts: string[]) => {
-    if (accounts.length === 0) {
-      disconnectWallet();
-    } else {
-      setAccount(accounts[0]);
-    }
-  };
-
-  const handleChainChanged = (chainId: string) => {
-    setChainId(parseInt(chainId, 16));
-    window.location.reload(); // Recommended by MetaMask
   };
 
   const connectWallet = async () => {
-    if (typeof window.ethereum === 'undefined') {
-      throw new Error('Please install MetaMask or another Web3 wallet');
+    if (!window.ethereum) {
+      alert('Please install MetaMask or a Web3 wallet');
+      return;
     }
 
     setIsConnecting(true);
-    
     try {
-      // Request account access
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      
-      // For mobile compatibility, use a more robust connection method
-      let accounts;
-      try {
-        accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      } catch (error: any) {
-        if (error.code === 4001) {
-          throw new Error('Please connect to MetaMask');
-        }
-        // Fallback for older wallets
-        accounts = await provider.send('eth_requestAccounts', []);
-      }
-      
-      if (!accounts || accounts.length === 0) {
-        throw new Error('No accounts found. Please unlock your wallet.');
-      }
-      
-      const signer = await provider.getSigner();
-      const address = await signer.getAddress();
-      const network = await provider.getNetwork();
+      const tempProvider = new ethers.BrowserProvider(window.ethereum);
 
-      setProvider(provider);
-      setSigner(signer);
-      setAccount(address);
+      const accounts = await window.ethereum.request({
+        method: 'eth_requestAccounts',
+      });
+
+      if (!accounts || accounts.length === 0) {
+        throw new Error('No accounts found.');
+      }
+
+      const tempSigner = await tempProvider.getSigner();
+      const network = await tempProvider.getNetwork();
+
+      setProvider(tempProvider);
+      setSigner(tempSigner);
+      setAccount(accounts[0]);
       setChainId(Number(network.chainId));
 
-      // Check if we're on CrossFi network
       if (Number(network.chainId) !== 4157) {
-        try {
-          await switchToCrossFi();
-        } catch (switchError) {
-          console.warn('Could not switch to CrossFi network:', switchError);
-          // Don't throw here, let user continue with current network
-        }
+        await switchToCrossFi();
       }
-    } catch (error) {
-      console.error('Error connecting wallet:', error);
-      throw error;
+
+    } catch (error: any) {
+      console.error('Wallet connection error:', error.message);
     } finally {
       setIsConnecting(false);
     }
@@ -143,9 +109,7 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const switchToCrossFi = async () => {
-    if (typeof window.ethereum === 'undefined') {
-      throw new Error('MetaMask is not installed');
-    }
+    if (!window.ethereum) throw new Error('No Ethereum provider found');
 
     try {
       await window.ethereum.request({
@@ -153,7 +117,6 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
         params: [{ chainId: CROSSFI_CHAIN_CONFIG.chainId }],
       });
     } catch (switchError: any) {
-      // This error code indicates that the chain has not been added to MetaMask
       if (switchError.code === 4902) {
         try {
           await window.ethereum.request({
@@ -161,13 +124,39 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
             params: [CROSSFI_CHAIN_CONFIG],
           });
         } catch (addError) {
-          console.error('Error adding CrossFi network:', addError);
-          throw new Error('Failed to add CrossFi network');
+          console.error('Failed to add network:', addError);
         }
       } else {
-        console.error('Error switching to CrossFi network:', switchError);
-        throw new Error('Failed to switch to CrossFi network');
+        throw switchError;
       }
+    }
+  };
+
+  const handleAccountsChanged = (accounts: string[]) => {
+    if (accounts.length === 0) {
+      disconnectWallet();
+    } else {
+      setAccount(accounts[0]);
+    }
+  };
+
+  const handleChainChanged = (hexChainId: string) => {
+    const parsedId = parseInt(hexChainId, 16);
+    setChainId(parsedId);
+    checkConnection(); // signer/provider/account
+  };
+
+  const setupEventListeners = () => {
+    if (window.ethereum?.on) {
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+      window.ethereum.on('chainChanged', handleChainChanged);
+    }
+  };
+
+  const cleanupEventListeners = () => {
+    if (window.ethereum?.removeListener) {
+      window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+      window.ethereum.removeListener('chainChanged', handleChainChanged);
     }
   };
 
@@ -194,7 +183,6 @@ export const useWeb3 = () => {
   return context;
 };
 
-// Extend Window interface for TypeScript
 declare global {
   interface Window {
     ethereum?: any;
