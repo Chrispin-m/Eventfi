@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Plus, Trash2, Calendar, MapPin, DollarSign } from 'lucide-react';
 import { useWeb3 } from '../context/Web3Context';
 import { toast } from 'react-toastify';
+import { ethers } from 'ethers';
 
 interface TicketTier {
   name: string;
