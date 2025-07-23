@@ -64,11 +64,17 @@ export const EVENT_MANAGER_ABI = [
 
 // Get contract instance
 export function getEventManagerContract() {
-  const contractAddress = CONTRACT_ADDRESSES.EVENT_MANAGER || process.env.VITE_EVENT_MANAGER_CONTRACT;
+  const contractAddress = process.env.EVENT_MANAGER_CONTRACT || 
+                         process.env.VITE_EVENT_MANAGER_CONTRACT || 
+                         CONTRACT_ADDRESSES.EVENT_MANAGER;
   
   if (!contractAddress) {
-    throw new Error('EventManager contract address not configured. Please set EVENT_MANAGER_CONTRACT or VITE_EVENT_MANAGER_CONTRACT environment variable.');
+    console.warn('EventManager contract address not configured. Please set EVENT_MANAGER_CONTRACT environment variable.');
+    // Return null instead of throwing to allow graceful handling
+    return null;
   }
+  
+  console.log('Using contract address:', contractAddress);
   
   return new ethers.Contract(
     contractAddress,
@@ -84,6 +90,9 @@ export function getEventManagerContractWithSigner() {
   }
   
   const contract = getEventManagerContract();
+  if (!contract) {
+    throw new Error('Contract not available');
+  }
   return contract.connect(wallet);
 }
 

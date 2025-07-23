@@ -95,7 +95,9 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
     setIsCreating(true);
 
     try {
-      // First, prepare the event data via backend API
+      console.log('Preparing event data...');
+      
+      // Step 1: Prepare event data via backend API
       const prepareResponse = await fetch('/api/organizer/events/prepare', {
         method: 'POST',
         headers: {
@@ -113,13 +115,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
         }),
       });
 
+      console.log('Prepare response status:', prepareResponse.status);
       if (!prepareResponse.ok) {
         const errorData = await prepareResponse.json();
         throw new Error(errorData.error || 'Failed to prepare event');
       }
 
       const preparedData = await prepareResponse.json();
-      const contractAddress = import.meta.env.VITE_EVENT_MANAGER_CONTRACT;
+      console.log('Event data prepared:', preparedData);
+      const contractAddress = preparedData.contractInfo?.contractAddress || import.meta.env.VITE_EVENT_MANAGER_CONTRACT;
 
       if (!contractAddress) {
         throw new Error('Contract address not configured. Please set VITE_EVENT_MANAGER_CONTRACT in your environment.');
@@ -137,25 +141,22 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
       const endTs = Math.floor(new Date(eventData.endDate).getTime() / 1000);
       const feeTokenIdx = ['XFI', 'XUSD', 'MPX'].indexOf(eventData.feeTokenType);
 
-      // Build metadata
-      const metadata = {
-        title: eventData.title,
-        description: eventData.description,
-        location: eventData.location,
-        startDate: startTs,
-        endDate: endTs,
-        organizer: account,
-        image: 'https://images.pexels.com/photos/2747449/pexels-photo-2747449.jpeg'
-      };
-      const metadataURI = `data:application/json;base64,${btoa(
-        JSON.stringify(metadata)
-      )}`;
+      // Use prepared metadata URI
+      const metadataURI = preparedData.eventData.metadataURI;
 
       const listingFee = ethers.utils.parseEther('1.0');
 
+      console.log('Creating event on blockchain...', {
+        title: eventData.title,
+        startDate: startTs,
+        endDate: endTs,
+        feeTokenType: feeTokenIdx,
+        listingFee: ethers.utils.formatEther(listingFee)
+      });
+
       toast.info('Confirm the transaction in your wallet...');
       
-      // Create the event
+      // Step 2: Create the event on blockchain
       const tx = await contract.createEvent(
         eventData.title,
         eventData.description,
@@ -166,47 +167,64 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
         feeTokenIdx,
         {
           value: feeTokenIdx === 0 ? listingFee : 0,
-          gasLimit: 1000000,
+          gasLimit: 2000000,
         }
       );
       
+      console.log('Transaction sent:', tx.hash);
       toast.info('Waiting for confirmation...');
       const receipt = await tx.wait();
+      console.log('Transaction confirmed:', receipt);
 
-      // Parse EventCreated event
+      // Step 3: Extract event ID from transaction receipt
       let eventId = null;
-      if (receipt.events) {
-        const eventCreatedLog = receipt.events.find(event => event.event === 'EventCreated');
-        if (eventCreatedLog && eventCreatedLog.args) {
-          eventId = eventCreatedLog.args.eventId.toString();
+      
+      // Try to find EventCreated event in logs
+      for (const log of receipt.logs) {
+        try {
+          const parsedLog = contract.interface.parseLog(log);
+          if (parsedLog.name === 'EventCreated') {
+            eventId = parsedLog.args.eventId.toString();
+            console.log('Event ID extracted:', eventId);
+            break;
+          }
+        } catch (error) {
+          // Not our event, continue
+          continue;
         }
       }
 
       if (!eventId) {
-        throw new Error('Failed to get event ID from transaction receipt');
+        console.warn('Could not extract event ID from receipt, using transaction hash as reference');
+        eventId = receipt.transactionHash;
       }
 
       toast.success(`Event created successfully! Event ID: ${eventId}`);
 
-      // Add ticket tiers
+      // Step 4: Add ticket tiers
       if (tiers.length > 0) {
+        console.log(`Adding ${tiers.length} ticket tiers...`);
         toast.info('Adding ticket tiers...');
-        for (const t of tiers) {
+        
+        for (const [index, t] of tiers.entries()) {
+          console.log(`Adding tier ${index + 1}: ${t.name}`);
           const tierTx = await contract.addTicketTier(
             eventId,
             t.name,
             ethers.utils.parseEther(t.price),
             Number(t.maxSupply),
             ['XFI', 'XUSD', 'MPX'].indexOf(t.tokenType),
-            { gasLimit: 500000 }
+            { gasLimit: 800000 }
           );
           await tierTx.wait();
+          console.log(`Tier "${t.name}" added successfully`);
           toast.success(`Tier "${t.name}" added successfully`);
         }
       }
 
-      // Notify backend about successful creation
+      // Step 5: Notify backend about successful creation
       try {
+        console.log('Notifying backend of successful creation...');
         await fetch('/api/organizer/events/created', {
           method: 'POST',
           headers: {
@@ -218,10 +236,12 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
             organizerAddress: account
           }),
         });
+        console.log('Backend notified successfully');
       } catch (notifyError) {
         console.warn('Failed to notify backend of event creation:', notifyError);
       }
 
+      console.log('Event creation process completed successfully');
       onSuccess();
     } catch (err: any) {
       console.error(err);
@@ -232,6 +252,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
           ? 'Insufficient funds'
           : err.message?.includes('user rejected')
           ? 'Transaction rejected by user'
+          : err.message?.includes('execution reverted')
+          ? 'Transaction failed - check contract parameters'
           : err.message || 'Failed to create event';
       toast.error(msg);
     } finally {

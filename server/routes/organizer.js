@@ -22,6 +22,15 @@ router.post('/events/prepare', asyncHandler(async (req, res) => {
     organizerAddress
   } = req.body;
 
+  console.log('Preparing event creation with data:', {
+    title,
+    location,
+    startDate,
+    endDate,
+    tiersCount: tiers?.length,
+    organizer: organizerAddress
+  });
+
   // Validation
   if (!title || !description || !location || !startDate || !endDate) {
     return res.status(400).json({ 
@@ -67,12 +76,32 @@ router.post('/events/prepare', asyncHandler(async (req, res) => {
   }
 
   try {
+    // Create metadata for the event
+    const metadata = {
+      title,
+      description,
+      location,
+      startDate,
+      endDate,
+      organizer: organizerAddress,
+      image: 'https://images.pexels.com/photos/2747449/pexels-photo-2747449.jpeg',
+      tiers: tiers.map(tier => ({
+        name: tier.name,
+        price: tier.price,
+        maxSupply: tier.maxSupply,
+        tokenType: tier.tokenType
+      }))
+    };
+
+    const metadataURI = `data:application/json;base64,${Buffer.from(JSON.stringify(metadata)).toString('base64')}`;
+
     const eventData = {
       title,
       description,
       location,
       startDate,
       endDate,
+      metadataURI,
       feeTokenType: feeTokenType || 'XFI',
       organizer: organizerAddress,
       tiers: tiers.map(tier => ({
@@ -83,15 +112,25 @@ router.post('/events/prepare', asyncHandler(async (req, res) => {
       }))
     };
 
+    console.log('Event data prepared successfully');
+
     res.json({
       success: true,
       eventData,
+      contractInfo: {
+        contractAddress: process.env.EVENT_MANAGER_CONTRACT || process.env.VITE_EVENT_MANAGER_CONTRACT,
+        listingFee: '1.0', // 1 XFI
+        gasLimit: '2000000'
+      },
       message: 'Event data prepared successfully'
     });
 
   } catch (error) {
     console.error('Error preparing event creation:', error);
-    res.status(500).json({ error: 'Failed to prepare event creation' });
+    res.status(500).json({ 
+      error: 'Failed to prepare event creation',
+      details: error.message 
+    });
   }
 }));
 
@@ -119,7 +158,9 @@ router.post('/events/created', asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    message: 'Event creation recorded successfully'
+    message: 'Event creation recorded successfully',
+    eventId,
+    explorerUrl: `https://scan.testnet.ms/tx/${transactionHash}`
   });
 }));
 
@@ -141,8 +182,16 @@ router.get('/events', asyncHandler(async (req, res) => {
 
   try {
     const contract = getEventManagerContract();
+    
+    if (!contract) {
+      return res.status(500).json({ 
+        error: 'Contract not configured',
+        details: 'EVENT_MANAGER_CONTRACT environment variable not set' 
+      });
+    }
+    
     const events = [];
-    const maxEventId = 1000; // Check up to 1000 events
+    const maxEventId = 100; // Check up to 100 events for performance
     
     console.log(`Fetching events for organizer: ${address}`);
     
@@ -150,39 +199,42 @@ router.get('/events', asyncHandler(async (req, res) => {
       try {
         const eventData = await contract.getEvent(i);
         
-        // Check if event exists (id > 0 and has organizer)
-        if (eventData[0] && eventData[0].toString() !== '0' && eventData[1] !== '0x0000000000000000000000000000000000000000') {
-          // Filter by organizer
-          if (eventData[1].toLowerCase() === address.toLowerCase()) {
-            const startDate = parseInt(eventData[5].toString());
-            const endDate = parseInt(eventData[6].toString());
-            
-            const event = {
-              id: parseInt(eventData[0].toString()),
-              organizer: eventData[1],
-              title: eventData[2],
-              description: eventData[3],
-              location: eventData[4],
-              startDate: startDate,
-              endDate: endDate,
-              metadataURI: eventData[7],
-              active: eventData[8],
-              tierCount: parseInt(eventData[9].toString()),
-              status: getEventStatus(startDate, endDate)
-            };
+        // Check if event exists and belongs to organizer
+        if (eventData[0] && 
+            eventData[0].toString() !== '0' && 
+            eventData[1] !== '0x0000000000000000000000000000000000000000' &&
+            eventData[1].toLowerCase() === address.toLowerCase()) {
+          
+          const startDate = parseInt(eventData[5].toString());
+          const endDate = parseInt(eventData[6].toString());
+          
+          const event = {
+            id: parseInt(eventData[0].toString()),
+            organizer: eventData[1],
+            title: eventData[2],
+            description: eventData[3],
+            location: eventData[4],
+            startDate: startDate,
+            endDate: endDate,
+            metadataURI: eventData[7],
+            active: eventData[8],
+            tierCount: parseInt(eventData[9].toString()),
+            status: getEventStatus(startDate, endDate)
+          };
 
-            if (event.active) {
-              events.push(event);
-            }
+          if (event.active) {
+            events.push(event);
           }
         }
       } catch (error) {
-        // Event doesn't exist or error reading it, continue
-        if (error.message.includes('execution reverted')) {
-          // No more events, break the loop
-          break;
+        // Event doesn't exist or error reading it
+        if (error.message.includes('execution reverted') || 
+            error.message.includes('invalid opcode') ||
+            error.code === 'CALL_EXCEPTION') {
+          // No more events or invalid event ID
+          continue;
         }
-        continue;
+        console.warn(`Error fetching event ${i}:`, error.message);
       }
     }
 

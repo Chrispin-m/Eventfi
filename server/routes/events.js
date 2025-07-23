@@ -20,6 +20,13 @@ router.get('/:id', asyncHandler(async (req, res) => {
   try {
     const contract = getEventManagerContract();
     
+    if (!contract) {
+      return res.status(500).json({ 
+        error: 'Contract not configured',
+        details: 'EVENT_MANAGER_CONTRACT environment variable not set' 
+      });
+    }
+    
     // Get event details
     const eventData = await contract.getEvent(id);
     
@@ -88,8 +95,16 @@ router.get('/', asyncHandler(async (req, res) => {
 
   try {
     const contract = getEventManagerContract();
+    
+    if (!contract) {
+      return res.status(500).json({ 
+        error: 'Contract not configured',
+        details: 'EVENT_MANAGER_CONTRACT environment variable not set' 
+      });
+    }
+    
     const events = [];
-    const maxEventId = 1000; // Check up to 1000 events
+    const maxEventId = 100; // Check up to 100 events for performance
     
     console.log('Fetching all events...');
     
@@ -97,8 +112,11 @@ router.get('/', asyncHandler(async (req, res) => {
       try {
         const eventData = await contract.getEvent(i);
         
-        // Check if event exists (id > 0 and has organizer)
-        if (eventData[0] && eventData[0].toString() !== '0' && eventData[1] !== '0x0000000000000000000000000000000000000000') {
+        // Check if event exists and is valid
+        if (eventData[0] && 
+            eventData[0].toString() !== '0' && 
+            eventData[1] !== '0x0000000000000000000000000000000000000000') {
+          
           // Filter by organizer if specified
           if (organizer && eventData[1].toLowerCase() !== organizer.toLowerCase()) {
             continue;
@@ -127,11 +145,13 @@ router.get('/', asyncHandler(async (req, res) => {
         }
       } catch (error) {
         // Event doesn't exist or error reading it
-        if (error.message.includes('execution reverted')) {
+        if (error.message.includes('execution reverted') || 
+            error.message.includes('invalid opcode') ||
+            error.code === 'CALL_EXCEPTION') {
           // No more events, break the loop
-          break;
+          continue;
         }
-        continue;
+        console.warn(`Error fetching event ${i}:`, error.message);
       }
     }
 
