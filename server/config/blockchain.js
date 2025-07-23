@@ -50,25 +50,28 @@ export const wallet = process.env.PRIVATE_KEY
 
 // Contract ABI (simplified for key functions)
 export const EVENT_MANAGER_ABI = [
-  "function createEvent(string title, string description, string location, uint256 startDate, uint256 endDate, string metadataURI, uint8 feeTokenType) payable returns (uint256)",
-  "function addTicketTier(uint256 eventId, string tierName, uint256 price, uint256 maxSupply, uint8 tokenType) external",
-  "function buyTicket(uint256 eventId, uint256 tierId, string ticketMetadataURI) payable returns (uint256)",
+  "function createEvent(string memory title, string memory description, string memory location, uint256 startDate, uint256 endDate, string memory metadataURI, uint8 feeTokenType) payable returns (uint256)",
+  "function addTicketTier(uint256 eventId, string memory tierName, uint256 price, uint256 maxSupply, uint8 tokenType) external",
+  "function buyTicket(uint256 eventId, uint256 tierId, string memory ticketMetadataURI) payable returns (uint256)",
   "function getEvent(uint256 eventId) view returns (uint256, address, string, string, string, uint256, uint256, string, bool, uint256)",
   "function getTicketTier(uint256 eventId, uint256 tierId) view returns (string, uint256, uint256, uint256, uint8, bool)",
   "function verifyTicket(uint256 ticketId) view returns (bool, string)",
   "function verifyAndUseTicket(uint256 ticketId) returns (bool)",
   "event EventCreated(uint256 indexed eventId, address indexed organizer, string title, uint256 startDate, uint256 endDate)",
-  "event TicketPurchased(uint256 indexed ticketId, uint256 indexed eventId, uint256 indexed tierId, address buyer, uint256 price, uint8 tokenType)"
+  "event TicketPurchased(uint256 indexed ticketId, uint256 indexed eventId, uint256 indexed tierId, address buyer, uint256 price, uint8 tokenType)",
+  "event TicketUsed(uint256 indexed ticketId, uint256 indexed eventId)"
 ];
 
 // Get contract instance
 export function getEventManagerContract() {
-  if (!CONTRACT_ADDRESSES.EVENT_MANAGER) {
-    throw new Error('EventManager contract address not configured');
+  const contractAddress = CONTRACT_ADDRESSES.EVENT_MANAGER || process.env.VITE_EVENT_MANAGER_CONTRACT;
+  
+  if (!contractAddress) {
+    throw new Error('EventManager contract address not configured. Please set EVENT_MANAGER_CONTRACT or VITE_EVENT_MANAGER_CONTRACT environment variable.');
   }
   
   return new ethers.Contract(
-    CONTRACT_ADDRESSES.EVENT_MANAGER,
+    contractAddress,
     EVENT_MANAGER_ABI,
     provider
   );

@@ -37,23 +37,31 @@ export const OrganizerDashboard: React.FC = () => {
       const response = await fetch(`/api/organizer/events?address=${encodeURIComponent(account)}`);
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API Error:', response.status, errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
+        console.error('Failed to fetch organizer events:', response.status);
+        setEvents([]);
+        return;
       }
       
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
-        const text = await response.text();
-        console.error('Non-JSON response:', text);
-        throw new Error('Server returned non-JSON response');
+        console.error('Non-JSON response from organizer events API');
+        setEvents([]);
+        return;
       }
       
       const data = await response.json();
-      setEvents(data.events || []);
+      
+      if (data.events && Array.isArray(data.events)) {
+        setEvents(data.events);
+        console.log(`Loaded ${data.events.length} events for organizer ${account}`);
+      } else {
+        console.warn('Invalid organizer events data structure:', data);
+        setEvents([]);
+      }
     } catch (error) {
       console.error('Error fetching organizer events:', error);
-      toast.error('Failed to load your events');
+      setEvents([]);
+      // Don't show error toast immediately, user might not have created events yet
     } finally {
       setLoading(false);
     }
@@ -61,8 +69,11 @@ export const OrganizerDashboard: React.FC = () => {
 
   const handleEventCreated = () => {
     setShowCreateModal(false);
-    fetchOrganizerEvents();
     toast.success('Event created successfully!');
+    // Refresh events after a short delay to allow blockchain confirmation
+    setTimeout(() => {
+      fetchOrganizerEvents();
+    }, 2000);
   };
 
   if (!isConnected) {

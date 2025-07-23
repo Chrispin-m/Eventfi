@@ -3,70 +3,24 @@ import { ethers } from 'ethers';
 import { getEventManagerContract } from '../config/blockchain.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
-// Add missing validateSignature function
-const validateSignature = (req, res, next) => {
-  try {
-    const { signature, message, address } = req.body;
-
-    if (!signature || !message || !address) {
-      return res.status(400).json({ 
-        error: 'Missing required authentication fields: signature, message, address' 
-      });
-    }
-
-    // Verify the signature
-    const signerAddress = ethers.verifyMessage(message, signature);
-    
-    if (signerAddress.toLowerCase() !== address.toLowerCase()) {
-      return res.status(401).json({ error: 'Invalid signature' });
-    }
-
-    // Add verified address to request
-    req.verifiedAddress = signerAddress;
-    next();
-  } catch (error) {
-    console.error('Signature validation error:', error);
-    res.status(401).json({ error: 'Signature validation failed' });
-  }
-};
-
 const router = express.Router();
 
 /**
- * @route POST /api/organizer/events
- * @desc Create a new event
- * @access Public (validates signature in request body)
+ * @route POST /api/organizer/events/prepare
+ * @desc Prepare event data for blockchain creation
+ * @access Public
  */
-router.post('/events', asyncHandler(async (req, res) => {
+router.post('/events/prepare', asyncHandler(async (req, res) => {
   const {
     title,
     description,
     location,
     startDate,
     endDate,
-    metadataURI,
     feeTokenType,
     tiers,
-    organizerAddress,
-    signature,
-    message
+    organizerAddress
   } = req.body;
-
-  // Validate signature manually
-  if (!signature || !message || !organizerAddress) {
-    return res.status(400).json({ 
-      error: 'Missing required authentication fields: signature, message, organizerAddress' 
-    });
-  }
-
-  try {
-    const signerAddress = ethers.verifyMessage(message, signature);
-    if (signerAddress.toLowerCase() !== organizerAddress.toLowerCase()) {
-      return res.status(401).json({ error: 'Invalid signature' });
-    }
-  } catch (error) {
-    return res.status(401).json({ error: 'Signature validation failed' });
-  }
 
   // Validation
   if (!title || !description || !location || !startDate || !endDate) {
@@ -75,7 +29,11 @@ router.post('/events', asyncHandler(async (req, res) => {
     });
   }
 
-  if (new Date(startDate * 1000) <= new Date()) {
+  if (!organizerAddress || !ethers.utils.isAddress(organizerAddress)) {
+    return res.status(400).json({ error: 'Valid organizer address is required' });
+  }
+
+  if (startDate <= Math.floor(Date.now() / 1000)) {
     return res.status(400).json({ error: 'Start date must be in the future' });
   }
 
@@ -87,66 +45,82 @@ router.post('/events', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'At least one ticket tier is required' });
   }
 
-  try {
-    const contract = getEventManagerContract();
-
-    // In a real implementation, this would return transaction data for the frontend to execute
-    // For the MVP, we'll return the structured data needed for the transaction
+  // Validate tiers
+  for (const [index, tier] of tiers.entries()) {
+    if (!tier.name || !tier.price || !tier.maxSupply) {
+      return res.status(400).json({ 
+        error: `Invalid tier ${index + 1}: missing name, price, or maxSupply` 
+      });
+    }
     
+    if (Number(tier.price) <= 0) {
+      return res.status(400).json({ 
+        error: `Invalid tier ${index + 1}: price must be greater than 0` 
+      });
+    }
+    
+    if (Number(tier.maxSupply) <= 0) {
+      return res.status(400).json({ 
+        error: `Invalid tier ${index + 1}: maxSupply must be greater than 0` 
+      });
+    }
+  }
+
+  try {
     const eventData = {
       title,
       description,
       location,
       startDate,
       endDate,
-      metadataURI: metadataURI || `data:application/json;base64,${Buffer.from(JSON.stringify({
-        title,
-        description,
-        location,
-        image: 'https://images.pexels.com/photos/2747449/pexels-photo-2747449.jpeg'
-      })).toString('base64')}`,
-      feeTokenType: feeTokenType || 0, // Default to XFI
-      organizer: organizerAddress
-    };
-
-    // Validate tiers
-    const validatedTiers = tiers.map((tier, index) => {
-      if (!tier.name || !tier.price || !tier.maxSupply) {
-        throw new Error(`Invalid tier ${index}: missing name, price, or maxSupply`);
-      }
-      
-      return {
+      feeTokenType: feeTokenType || 'XFI',
+      organizer: organizerAddress,
+      tiers: tiers.map(tier => ({
         name: tier.name,
-        price: ethers.utils.parseEther(tier.price.toString()),
-        maxSupply: parseInt(tier.maxSupply),
-        tokenType: tier.tokenType || 0 // Default to XFI
-      };
-    });
-
-    // Generate a unique event ID for frontend reference (temporary)
-    const tempEventId = Date.now();
-    
-    // Calculate total listing fee
-    const listingFee = ethers.utils.parseEther('0'); // 0 for testing
+        price: tier.price,
+        maxSupply: Number(tier.maxSupply),
+        tokenType: tier.tokenType || 'XFI'
+      }))
+    };
 
     res.json({
       success: true,
       eventData,
-      tiers: validatedTiers,
-      transactionInfo: {
-        contractAddress: process.env.EVENT_MANAGER_CONTRACT,
-        listingFee: ethers.utils.formatEther(listingFee),
-        feeTokenType: eventData.feeTokenType,
-        tempEventId,
-        publicURL: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/event/${tempEventId}`
-      },
-      message: 'Event ready to create - confirm transaction in your wallet'
+      message: 'Event data prepared successfully'
     });
 
   } catch (error) {
     console.error('Error preparing event creation:', error);
-    res.status(500).json({ error: error.message || 'Failed to prepare event creation' });
+    res.status(500).json({ error: 'Failed to prepare event creation' });
   }
+}));
+
+/**
+ * @route POST /api/organizer/events/created
+ * @desc Notify backend of successful event creation
+ * @access Public
+ */
+router.post('/events/created', asyncHandler(async (req, res) => {
+  const { eventId, transactionHash, organizerAddress } = req.body;
+
+  if (!eventId || !transactionHash || !organizerAddress) {
+    return res.status(400).json({ 
+      error: 'Missing required fields: eventId, transactionHash, organizerAddress' 
+    });
+  }
+
+  // Log successful event creation
+  console.log(`Event created successfully:`, {
+    eventId,
+    transactionHash,
+    organizer: organizerAddress,
+    timestamp: new Date().toISOString()
+  });
+
+  res.json({
+    success: true,
+    message: 'Event creation recorded successfully'
+  });
 }));
 
 /**
@@ -166,28 +140,35 @@ router.get('/events', asyncHandler(async (req, res) => {
   }
 
   try {
-    // Directly fetch events from the contract instead of making internal HTTP calls
     const contract = getEventManagerContract();
     const events = [];
-    const maxEventId = 100; // Reasonable limit for MVP
+    const maxEventId = 1000; // Check up to 1000 events
+    
+    console.log(`Fetching events for organizer: ${address}`);
     
     for (let i = 1; i <= maxEventId; i++) {
       try {
         const eventData = await contract.getEvent(i);
         
-        if (eventData[0] && eventData[0].toString() !== '0') {
+        // Check if event exists (id > 0 and has organizer)
+        if (eventData[0] && eventData[0].toString() !== '0' && eventData[1] !== '0x0000000000000000000000000000000000000000') {
           // Filter by organizer
           if (eventData[1].toLowerCase() === address.toLowerCase()) {
+            const startDate = parseInt(eventData[5].toString());
+            const endDate = parseInt(eventData[6].toString());
+            
             const event = {
               id: parseInt(eventData[0].toString()),
               organizer: eventData[1],
               title: eventData[2],
               description: eventData[3],
               location: eventData[4],
-              startDate: parseInt(eventData[5].toString()),
-              endDate: parseInt(eventData[6].toString()),
+              startDate: startDate,
+              endDate: endDate,
+              metadataURI: eventData[7],
               active: eventData[8],
-              status: getEventStatus(parseInt(eventData[5].toString()), parseInt(eventData[6].toString()))
+              tierCount: parseInt(eventData[9].toString()),
+              status: getEventStatus(startDate, endDate)
             };
 
             if (event.active) {
@@ -196,10 +177,19 @@ router.get('/events', asyncHandler(async (req, res) => {
           }
         }
       } catch (error) {
-        // Event doesn't exist, continue
+        // Event doesn't exist or error reading it, continue
+        if (error.message.includes('execution reverted')) {
+          // No more events, break the loop
+          break;
+        }
         continue;
       }
     }
+
+    console.log(`Found ${events.length} events for organizer ${address}`);
+
+    // Sort events by ID (newest first)
+    events.sort((a, b) => b.id - a.id);
 
     res.json({
       events: events,
@@ -213,7 +203,10 @@ router.get('/events', asyncHandler(async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching organizer events:', error);
-    res.status(500).json({ error: 'Failed to fetch organizer events' });
+    res.status(500).json({ 
+      error: 'Failed to fetch organizer events',
+      details: error.message 
+    });
   }
 }));
 
@@ -225,48 +218,5 @@ function getEventStatus(startDate, endDate) {
   if (now >= startDate && now <= endDate) return 'live';
   return 'ended';
 }
-/**
- * @route POST /api/organizer/events/:id/tiers
- * @desc Add a ticket tier to an existing event
- * @access Private (requires signature)
- */
-router.post('/events/:id/tiers', validateSignature, asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { name, price, maxSupply, tokenType, organizerAddress } = req.body;
-
-  if (!name || !price || !maxSupply) {
-    return res.status(400).json({ 
-      error: 'Missing required fields: name, price, maxSupply' 
-    });
-  }
-
-  try {
-    const contract = getEventManagerContract();
-    
-    // Verify the organizer owns this event
-    const eventData = await contract.getEvent(id);
-    if (eventData[1].toLowerCase() !== organizerAddress.toLowerCase()) {
-      return res.status(403).json({ error: 'Only the event organizer can add tiers' });
-    }
-
-    const tierData = {
-      eventId: id,
-      name,
-      price: ethers.parseEther(price.toString()),
-      maxSupply: parseInt(maxSupply),
-      tokenType: tokenType || 0
-    };
-
-    res.json({
-      success: true,
-      tierData,
-      message: 'Tier ready to add - confirm transaction in your wallet'
-    });
-
-  } catch (error) {
-    console.error('Error preparing tier addition:', error);
-    res.status(500).json({ error: 'Failed to prepare tier addition' });
-  }
-}));
 
 export default router;

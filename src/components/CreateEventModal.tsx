@@ -95,21 +95,49 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
     setIsCreating(true);
 
     try {
-      const contractAddress =
-        import.meta.env.VITE_EVENT_MANAGER_CONTRACT ||
-        '0x1234567890123456789012345678901234567890';
+      // First, prepare the event data via backend API
+      const prepareResponse = await fetch('/api/organizer/events/prepare', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: eventData.title,
+          description: eventData.description,
+          location: eventData.location,
+          startDate: Math.floor(new Date(eventData.startDate).getTime() / 1000),
+          endDate: Math.floor(new Date(eventData.endDate).getTime() / 1000),
+          feeTokenType: eventData.feeTokenType,
+          tiers: tiers,
+          organizerAddress: account
+        }),
+      });
+
+      if (!prepareResponse.ok) {
+        const errorData = await prepareResponse.json();
+        throw new Error(errorData.error || 'Failed to prepare event');
+      }
+
+      const preparedData = await prepareResponse.json();
+      const contractAddress = import.meta.env.VITE_EVENT_MANAGER_CONTRACT;
+
+      if (!contractAddress) {
+        throw new Error('Contract address not configured. Please set VITE_EVENT_MANAGER_CONTRACT in your environment.');
+      }
 
       const contractABI = [
-        'function createEvent(string,string,string,uint256,uint256,string,uint8) payable returns (uint256)',
-        'event EventCreated(uint256 indexed eventId, address organizer)'
+        'function createEvent(string title, string description, string location, uint256 startDate, uint256 endDate, string metadataURI, uint8 feeTokenType) payable returns (uint256)',
+        'function addTicketTier(uint256 eventId, string tierName, uint256 price, uint256 maxSupply, uint8 tokenType) external',
+        'event EventCreated(uint256 indexed eventId, address indexed organizer, string title, uint256 startDate, uint256 endDate)'
       ];
+      
       const contract = new ethers.Contract(contractAddress, contractABI, signer);
 
       const startTs = Math.floor(new Date(eventData.startDate).getTime() / 1000);
       const endTs = Math.floor(new Date(eventData.endDate).getTime() / 1000);
       const feeTokenIdx = ['XFI', 'XUSD', 'MPX'].indexOf(eventData.feeTokenType);
 
-      // build on‑chain metadata
+      // Build metadata
       const metadata = {
         title: eventData.title,
         description: eventData.description,
@@ -117,14 +145,17 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
         startDate: startTs,
         endDate: endTs,
         organizer: account,
+        image: 'https://images.pexels.com/photos/2747449/pexels-photo-2747449.jpeg'
       };
       const metadataURI = `data:application/json;base64,${btoa(
         JSON.stringify(metadata)
       )}`;
 
-      const listingFee = ethers.utils.parseEther('1'); // v5 usage
+      const listingFee = ethers.utils.parseEther('1.0');
 
       toast.info('Confirm the transaction in your wallet...');
+      
+      // Create the event
       const tx = await contract.createEvent(
         eventData.title,
         eventData.description,
@@ -135,32 +166,60 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
         feeTokenIdx,
         {
           value: feeTokenIdx === 0 ? listingFee : 0,
-          gasLimit: 500_000,
+          gasLimit: 1000000,
         }
       );
+      
       toast.info('Waiting for confirmation...');
       const receipt = await tx.wait();
 
-      // parse EventCreated
-      const parsedLog = receipt.events?.find((e) => e.event === 'EventCreated');
-      const eventId = parsedLog?.args?.eventId.toString() || null;
-      toast.success(`Event created!${eventId ? ` ID: ${eventId}` : ''}`);
+      // Parse EventCreated event
+      let eventId = null;
+      if (receipt.events) {
+        const eventCreatedLog = receipt.events.find(event => event.event === 'EventCreated');
+        if (eventCreatedLog && eventCreatedLog.args) {
+          eventId = eventCreatedLog.args.eventId.toString();
+        }
+      }
 
-      // add tiers
-      if (eventId && tiers.length) {
-        const tierABI = ['function addTicketTier(uint256,string,uint256,uint256,uint8)'];
-        const tierContract = new ethers.Contract(contractAddress, tierABI, signer);
+      if (!eventId) {
+        throw new Error('Failed to get event ID from transaction receipt');
+      }
+
+      toast.success(`Event created successfully! Event ID: ${eventId}`);
+
+      // Add ticket tiers
+      if (tiers.length > 0) {
+        toast.info('Adding ticket tiers...');
         for (const t of tiers) {
-          const tierTx = await tierContract.addTicketTier(
+          const tierTx = await contract.addTicketTier(
             eventId,
             t.name,
             ethers.utils.parseEther(t.price),
             Number(t.maxSupply),
-            ['XFI', 'XUSD', 'MPX'].indexOf(t.tokenType)
+            ['XFI', 'XUSD', 'MPX'].indexOf(t.tokenType),
+            { gasLimit: 500000 }
           );
           await tierTx.wait();
-          toast.success(`Tier "${t.name}" added.`);
+          toast.success(`Tier "${t.name}" added successfully`);
         }
+      }
+
+      // Notify backend about successful creation
+      try {
+        await fetch('/api/organizer/events/created', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            eventId: eventId,
+            transactionHash: receipt.transactionHash,
+            organizerAddress: account
+          }),
+        });
+      } catch (notifyError) {
+        console.warn('Failed to notify backend of event creation:', notifyError);
       }
 
       onSuccess();
@@ -171,6 +230,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
           ? 'Transaction rejected'
           : err.code === 'INSUFFICIENT_FUNDS'
           ? 'Insufficient funds'
+          : err.message?.includes('user rejected')
+          ? 'Transaction rejected by user'
           : err.message || 'Failed to create event';
       toast.error(msg);
     } finally {

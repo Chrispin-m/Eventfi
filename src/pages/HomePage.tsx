@@ -32,22 +32,31 @@ export const HomePage: React.FC = () => {
       const response = await fetch('/api/events');
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API Error:', response.status, errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
+        console.error('Failed to fetch events:', response.status);
+        // Don't throw error, just set empty events
+        setEvents([]);
+        return;
       }
       
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
-        const text = await response.text();
-        console.error('Non-JSON response:', text);
-        throw new Error('Server returned non-JSON response');
+        console.error('Non-JSON response from events API');
+        setEvents([]);
+        return;
       }
       
       const data = await response.json();
-      setEvents(data.events || []);
+      
+      if (data.events && Array.isArray(data.events)) {
+        setEvents(data.events);
+        console.log(`Loaded ${data.events.length} events`);
+      } else {
+        console.warn('Invalid events data structure:', data);
+        setEvents([]);
+      }
     } catch (error) {
       console.error('Error fetching events:', error);
+      setEvents([]); // Set empty array instead of leaving in loading state
     } finally {
       setLoading(false);
     }
