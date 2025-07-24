@@ -1,51 +1,50 @@
-# Base image
+# Base image for dependencies
 FROM node:18-alpine AS base
 WORKDIR /app
 
 # === Install dependencies ===
 FROM base AS deps
 
-# Copy package files
+# Copy root and server package files
 COPY package*.json ./
 COPY server/package*.json ./server/
 
-# Install root dependencies (include dev so vite is available)
+# Install root deps (with Vite and others)
 RUN npm install --legacy-peer-deps
 
-# Install server dependencies
+# Install server deps
 WORKDIR /app/server
 RUN npm install --legacy-peer-deps
 
 # === Build frontend ===
 FROM base AS builder
+WORKDIR /app
 
-# Copy full source code
+# Copy source code and deps
 COPY . .
-
-# Copy node_modules
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/server/node_modules ./server/node_modules
 
-# Build frontend using Vite
+# Build Vite frontend
 RUN npm run build
 
-# === Final stage for production ===
+# === Final production image ===
 FROM node:18-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Add non-root user
-RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
-USER nextjs
+# Add app user
+RUN addgroup -S nodejs && adduser -S appuser -G nodejs
+USER appuser
 
 # Copy built frontend and backend
-COPY --from=builder /app/dist ./public
+COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server ./server
 COPY --from=deps /app/server/node_modules ./server/node_modules
 
-# Expose port and run server
-EXPOSE 3000
+# Set environment
 ENV PORT=3000
 
+# Start backend server
 CMD ["node", "server/app.js"]
