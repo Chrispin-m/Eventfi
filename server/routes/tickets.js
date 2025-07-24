@@ -7,6 +7,84 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 const router = express.Router();
 
 /**
+ * @route GET /api/tickets/user/:address
+ * @desc Get all tickets for a specific user
+ * @access Public
+ */
+router.get('/user/:address', asyncHandler(async (req, res) => {
+  const { address } = req.params;
+
+  if (!address) {
+    return res.status(400).json({ error: 'User address is required' });
+  }
+
+  if (!ethers.utils.isAddress(address)) {
+    return res.status(400).json({ error: 'Invalid user address' });
+  }
+
+  try {
+    // Mock user tickets data - in production this would come from blockchain/database
+    const mockUserTickets = [
+      {
+        id: 1,
+        eventId: 1,
+        eventTitle: 'CrossFi Developer Conference 2024',
+        eventLocation: 'San Francisco, CA',
+        eventStartDate: Math.floor(Date.now() / 1000) + 86400 * 7,
+        eventEndDate: Math.floor(Date.now() / 1000) + 86400 * 8,
+        tierName: 'VIP',
+        price: '0.5',
+        tokenType: 'XFI',
+        purchaseTime: Math.floor(Date.now() / 1000) - 86400,
+        used: false,
+        valid: true,
+        status: 'upcoming'
+      },
+      {
+        id: 2,
+        eventId: 2,
+        eventTitle: 'DeFi Summit 2024',
+        eventLocation: 'New York, NY',
+        eventStartDate: Math.floor(Date.now() / 1000) + 86400 * 14,
+        eventEndDate: Math.floor(Date.now() / 1000) + 86400 * 15,
+        tierName: 'Standard',
+        price: '0.2',
+        tokenType: 'XUSD',
+        purchaseTime: Math.floor(Date.now() / 1000) - 86400 * 2,
+        used: false,
+        valid: true,
+        status: 'upcoming'
+      }
+    ];
+
+    // Generate QR codes for tickets
+    const ticketsWithQR = await Promise.all(
+      mockUserTickets.map(async (ticket) => {
+        const qrCode = await generateTicketQR(ticket.id);
+        return {
+          ...ticket,
+          qrCode,
+          status: getEventStatus(ticket.eventStartDate, ticket.eventEndDate)
+        };
+      })
+    );
+
+    res.json({
+      tickets: ticketsWithQR,
+      totalTickets: ticketsWithQR.length,
+      userAddress: address
+    });
+
+  } catch (error) {
+    console.error('Error fetching user tickets:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch user tickets',
+      details: error.message 
+    });
+  }
+}));
+
+/**
  * @route GET /api/tickets/:id
  * @desc Get ticket details and QR code
  * @access Public
@@ -230,6 +308,14 @@ async function generateTicketQR(ticketId) {
     console.error('Error generating QR code:', error);
     return null;
   }
+}
+
+function getEventStatus(startDate, endDate) {
+  const now = Math.floor(Date.now() / 1000);
+  
+  if (now < startDate) return 'upcoming';
+  if (now >= startDate && now <= endDate) return 'live';
+  return 'ended';
 }
 
 function extractTicketIdFromQR(qrData) {

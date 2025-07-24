@@ -7,6 +7,7 @@ import { HomePage } from './pages/HomePage';
 import { EventPage } from './pages/EventPage';
 import { OrganizerDashboard } from './pages/OrganizerDashboard';
 import { TicketPage } from './pages/TicketPage';
+import { MyTicketsPage } from './pages/MyTicketsPage';
 import { ScannerPage } from './pages/ScannerPage';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -22,6 +23,7 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/event/:id" element={<EventPage />} />
               <Route path="/organizer" element={<OrganizerDashboard />} />
+              <Route path="/my-tickets" element={<MyTicketsPage />} />
               <Route path="/ticket/:id" element={<TicketPage />} />
               <Route path="/scanner" element={<ScannerPage />} />
             </Routes>

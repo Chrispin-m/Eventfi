@@ -12,6 +12,7 @@ export const Navbar: React.FC = () => {
   const navigation = [
     { name: 'Events', href: '/', icon: Calendar },
     { name: 'Organizer', href: '/organizer', icon: Ticket },
+    { name: 'My Tickets', href: '/my-tickets', icon: QrCode },
     { name: 'Scanner', href: '/scanner', icon: QrCode },
   ];
 
