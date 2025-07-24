@@ -3,6 +3,7 @@ import { Camera, Upload, CheckCircle, XCircle, Scan, StopCircle, Key, Users, Ale
 import { useWeb3 } from '../context/Web3Context';
 import { toast } from 'react-toastify';
 import QrScanner from 'qr-scanner';
+import Webcam from 'react-webcam';
 
 interface VerificationResult {
   ticketId: number;
@@ -23,12 +24,12 @@ export const ScannerPage: React.FC = () => {
   const [staffMode, setStaffMode] = useState(false);
   const [staffCode, setStaffCode] = useState('');
   const [eventId, setEventId] = useState('');
-  const [availableCameras, setAvailableCameras] = useState<QrScanner.Camera[]>([]);
-  const [selectedCamera, setSelectedCamera] = useState<string>('environment');
+  const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const qrScannerRef = useRef<QrScanner | null>(null);
+  const webcamRef = useRef<Webcam>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const scanInterval = useRef<NodeJS.Timeout | null>(null);
 
   // Clean up on unmount
   useEffect(() => {
@@ -37,72 +38,40 @@ export const ScannerPage: React.FC = () => {
     };
   }, []);
 
-  const listAvailableCameras = async () => {
-    try {
-      const cameras = await QrScanner.listCameras(true);
-      setAvailableCameras(cameras);
-    } catch (error) {
-      console.error('Error listing cameras:', error);
-    }
-  };
+  // Get available cameras
+  useEffect(() => {
+    const getCameras = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        setAvailableDevices(videoDevices);
+        
+        if (videoDevices.length > 0) {
+          setSelectedDevice(videoDevices[0].deviceId);
+        }
+      } catch (error) {
+        console.error('Error listing cameras:', error);
+      }
+    };
+    
+    getCameras();
+  }, []);
 
-  const handleCameraStart = async () => {
-    if (cameraPermission === 'denied') {
-      toast.error('Camera access denied. Please enable camera permissions in browser settings.');
-      return;
-    }
-
+  const startCameraScanning = async () => {
     setCameraError(null);
     setIsCameraActive(true);
     setCameraPermission('checking');
-
+    
     try {
-      // Check if video element is available
-      if (!videoRef.current) {
-        throw new Error("Video element not available");
-      }
-
-      // Request camera access directly
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: selectedCamera === 'environment' ? 'environment' : 'user'
-        } 
-      });
-      
-      // Stop the stream immediately - we just needed it for permission
+      // Check if we have camera access
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       stream.getTracks().forEach(track => track.stop());
       
       setCameraPermission('granted');
-      await listAvailableCameras();
+      toast.success('Camera access granted!');
       
-      // Create QR scanner
-      qrScannerRef.current = new QrScanner(
-        videoRef.current,
-        (result) => verifyTicket(result.data),
-        {
-          preferredCamera: selectedCamera,
-          maxScansPerSecond: 5,
-          highlightScanRegion: true,
-          highlightCodeOutline: true,
-          calculateScanRegion: (video) => {
-            const size = Math.min(video.videoWidth, video.videoHeight) * 0.7;
-            return {
-              x: (video.videoWidth - size) / 2,
-              y: (video.videoHeight - size) / 2,
-              width: size,
-              height: size,
-            };
-          },
-          onDecodeError: (error) => {
-            if (!error?.message?.includes('No QR code found')) {
-              console.debug('Scan error:', error);
-            }
-          }
-        }
-      );
-
-      await qrScannerRef.current.start();
-      toast.success('Scanner active - point at QR code');
+      // Start QR scanning
+      startQRScanning();
       
     } catch (error) {
       console.error('Camera initialization failed:', error);
@@ -122,27 +91,57 @@ export const ScannerPage: React.FC = () => {
     }
   };
 
+  const startQRScanning = () => {
+    if (scanInterval.current) {
+      clearInterval(scanInterval.current);
+    }
+    
+    scanInterval.current = setInterval(async () => {
+      if (!webcamRef.current || !isCameraActive) return;
+      
+      try {
+        const screenshot = webcamRef.current.getScreenshot();
+        if (!screenshot) return;
+        
+        const result = await QrScanner.scanImage(screenshot, {
+          returnDetailedScanResult: true,
+          scanRegion: {
+            x: 15, y: 15, width: 70, height: 70  // Focus on center region
+          }
+        });
+        
+        if (result) {
+          verifyTicket(result.data);
+          stopCameraScanning();
+        }
+      } catch (error) {
+        // Ignore "No QR code found" errors
+        if (!error?.message?.includes('No QR code found')) {
+          console.debug('Scan error:', error);
+        }
+      }
+    }, 500); // Scan every 500ms
+  };
+
   const stopCameraScanning = () => {
-    if (qrScannerRef.current) {
-      qrScannerRef.current.stop();
-      qrScannerRef.current.destroy();
-      qrScannerRef.current = null;
+    if (scanInterval.current) {
+      clearInterval(scanInterval.current);
+      scanInterval.current = null;
     }
     setIsCameraActive(false);
     toast.info('Scanner stopped');
   };
 
-  const switchCamera = async () => {
-    if (availableCameras.length <= 1) {
+  const switchCamera = () => {
+    if (availableDevices.length <= 1) {
       toast.info('Only one camera available');
       return;
     }
     
-    stopCameraScanning();
-    setSelectedCamera(prev => prev === 'environment' ? 'user' : 'environment');
-    
-    // Restart with new camera
-    setTimeout(handleCameraStart, 300);
+    const currentIndex = availableDevices.findIndex(device => device.deviceId === selectedDevice);
+    const nextIndex = (currentIndex + 1) % availableDevices.length;
+    setSelectedDevice(availableDevices[nextIndex].deviceId);
+    toast.info(`Switched to ${availableDevices[nextIndex].label || 'camera'}`);
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -376,7 +375,7 @@ export const ScannerPage: React.FC = () => {
                     <span>Live Camera Scan</span>
                   </h2>
                   
-                  {availableCameras.length > 1 && (
+                  {availableDevices.length > 1 && (
                     <button
                       onClick={switchCamera}
                       disabled={isCameraActive}
@@ -392,7 +391,7 @@ export const ScannerPage: React.FC = () => {
                     <div className="bg-gray-100 rounded-lg p-8">
                       <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                       <button
-                        onClick={handleCameraStart}
+                        onClick={startCameraScanning}
                         disabled={cameraPermission === 'denied' || cameraError === 'No camera available'}
                         className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
@@ -409,11 +408,15 @@ export const ScannerPage: React.FC = () => {
                   ) : (
                     <div className="relative">
                       <div className="relative mx-auto max-w-md">
-                        <video
-                          ref={videoRef}
+                        <Webcam
+                          ref={webcamRef}
+                          audio={false}
+                          screenshotFormat="image/jpeg"
+                          videoConstraints={{
+                            deviceId: selectedDevice,
+                            facingMode: selectedDevice ? undefined : 'environment'
+                          }}
                           className="w-full rounded-lg border-2 border-green-500 bg-black aspect-video"
-                          playsInline
-                          muted
                         />
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <div className="border-4 border-green-500 border-dashed rounded-xl animate-pulse w-[70%] h-[70%]" />
@@ -427,7 +430,7 @@ export const ScannerPage: React.FC = () => {
                           <StopCircle className="w-4 h-4 inline mr-2" />
                           Stop Scanner
                         </button>
-                        {availableCameras.length > 1 && (
+                        {availableDevices.length > 1 && (
                           <button
                             onClick={switchCamera}
                             className="bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 transition-colors"
@@ -600,13 +603,13 @@ export const ScannerPage: React.FC = () => {
               <span>Live Camera Scan</span>
             </h2>
             
-            {availableCameras.length > 1 && (
+            {availableDevices.length > 1 && (
               <button
                 onClick={switchCamera}
                 disabled={isCameraActive}
                 className="text-sm bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
               >
-                Switch Camera ({selectedCamera === 'environment' ? 'Back' : 'Front'})
+                Switch Camera
               </button>
             )}
           </div>
@@ -616,7 +619,7 @@ export const ScannerPage: React.FC = () => {
               <div className="bg-gray-100 rounded-lg p-8">
                 <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <button
-                  onClick={handleCameraStart}
+                  onClick={startCameraScanning}
                   disabled={cameraPermission === 'denied' || cameraError === 'No camera available'}
                   className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -633,11 +636,15 @@ export const ScannerPage: React.FC = () => {
             ) : (
               <div className="relative">
                 <div className="relative mx-auto max-w-md">
-                  <video
-                    ref={videoRef}
+                  <Webcam
+                    ref={webcamRef}
+                    audio={false}
+                    screenshotFormat="image/jpeg"
+                    videoConstraints={{
+                      deviceId: selectedDevice,
+                      facingMode: selectedDevice ? undefined : 'environment'
+                    }}
                     className="w-full rounded-lg border-2 border-blue-500 bg-black aspect-video"
-                    playsInline
-                    muted
                   />
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="border-4 border-blue-500 border-dashed rounded-xl animate-pulse w-[70%] h-[70%]" />
@@ -651,7 +658,7 @@ export const ScannerPage: React.FC = () => {
                     <StopCircle className="w-4 h-4 inline mr-2" />
                     Stop Scanner
                   </button>
-                  {availableCameras.length > 1 && (
+                  {availableDevices.length > 1 && (
                     <button
                       onClick={switchCamera}
                       className="bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 transition-colors"
@@ -747,7 +754,7 @@ export const ScannerPage: React.FC = () => {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-gray-600">Available Cameras:</span>
-              <span className="text-sm">{availableCameras.length}</span>
+              <span className="text-sm">{availableDevices.length}</span>
             </div>
           </div>
         </div>
