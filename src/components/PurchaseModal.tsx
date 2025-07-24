@@ -49,18 +49,17 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
     const signature = await signer.signMessage(message);
     
     // Step 2: Send purchase request to backend
-    const response = await fetch(`/api/events/${event.id}/purchase`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        eventId: event.id,
-        tierId: tier.id,
-        buyerAddress: account,
-        signature: signature,
-        message: message,
-        tokenType: tier.tokenType
-      }),
-    });
+  const response = await fetch(`/api/events/${event.id}/purchase`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    tierId: tier.id,
+    buyerAddress: account,
+    signature: signature,
+    message: message,
+    tokenType: tier.tokenType
+  }),
+});
 
       const purchaseData = await response.json();
       

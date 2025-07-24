@@ -189,13 +189,13 @@ router.get('/', asyncHandler(async (req, res) => {
  * @desc Purchase a ticket for an event
  * @access Public
  */
-router.post('/:id/purchase', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { eventId, tierId, buyerAddress, signature, message, tokenType } = req.body;
+router.post('/:eventId/purchase', asyncHandler(async (req, res) => {
+  const eventId = req.params.eventId;
+  const { tierId, buyerAddress, signature, message, tokenType } = req.body;
 
-  if (!eventId || !tierId || !buyerAddress || !signature || !message) {
+  if (!tierId || !buyerAddress || !signature || !message) {
     return res.status(400).json({ 
-      error: 'Missing required fields: eventId, tierId, buyerAddress, signature, message' 
+      error: 'Missing required fields: tierId, buyerAddress, signature, message' 
     });
   }
 
