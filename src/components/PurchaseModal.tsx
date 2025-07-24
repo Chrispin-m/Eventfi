@@ -44,25 +44,23 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
     setPurchaseStep('processing');
 
     try {
-      // Step 1: Sign purchase message
-      const message = `Purchase ticket for event ${event.id}, tier ${tier.id}, buyer ${account}`;
-      const signature = await signer.signMessage(message);
-      
-      // Step 1: Get purchase details from backend
-      const response = await fetch(`/api/events/${event.id}/purchase`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          eventId: event.id,
-          tierId: tier.id,
-          buyerAddress: account,
-          signature: signature,
-          message: message,
-          tokenType: tier.tokenType
-        }),
-      });
+    // Step 1: Sign purchase message
+    const message = `Purchase ticket for event ${event.id}, tier ${tier.id}, buyer ${account}`;
+    const signature = await signer.signMessage(message);
+    
+    // Step 2: Send purchase request to backend
+    const response = await fetch(`/api/events/${event.id}/purchase`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventId: event.id,
+        tierId: tier.id,
+        buyerAddress: account,
+        signature: signature,
+        message: message,
+        tokenType: tier.tokenType
+      }),
+    });
 
       const purchaseData = await response.json();
       
