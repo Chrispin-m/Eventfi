@@ -30,7 +30,7 @@ const CROSSFI_CHAIN_CONFIG = {
 };
 
 // WalletConnect configuration
-const WALLETCONNECT_PROJECT_ID = 'your_project_id_here'; // Replace with your WalletConnect project ID
+const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WC_PROJECT_ID;
 
 export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [account, setAccount] = useState<string | null>(null);
