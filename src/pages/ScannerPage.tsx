@@ -31,7 +31,6 @@ export const ScannerPage: React.FC = () => {
   const cameraInitTimer = useRef<NodeJS.Timeout | null>(null);
   const [videoReady, setVideoReady] = useState(false);
 
-
   // Check camera permissions and available cameras
   useEffect(() => {
     checkCameraPermissions();
@@ -102,38 +101,7 @@ export const ScannerPage: React.FC = () => {
     }
   };
 
-  // NEW: Initialize camera when video element is ready
-  const initCameraWhenReady = async () => {
-    if (videoRef.current) {
-      await startCameraScanning();
-    } else {
-      // Retry initialization with exponential backoff
-      let retryCount = 0;
-      const maxRetries = 5;
-      const checkVideoReady = () => {
-        if (videoRef.current) {
-          startCameraScanning();
-        } else if (retryCount < maxRetries) {
-          retryCount++;
-          cameraInitTimer.current = setTimeout(checkVideoReady, 300 * retryCount);
-        } else {
-          toast.error('Failed to initialize camera. Please try again.');
-          setIsCameraActive(false);
-        }
-      };
-      cameraInitTimer.current = setTimeout(checkVideoReady, 300);
-    }
-  };
-
-
-
-
-
-
-
-
-  
- const startCameraScanning = async () => {
+  const startCameraScanning = async () => {
     if (cameraPermission !== 'granted') {
       await requestCameraPermission();
       if (cameraPermission !== 'granted') return;
@@ -157,6 +125,7 @@ export const ScannerPage: React.FC = () => {
         videoRef.current,
         (result) => {
           console.log('QR Code detected:', result.data);
+          toast.success('QR Code detected!');
           verifyTicket(result.data);
         },
         {
@@ -181,15 +150,9 @@ export const ScannerPage: React.FC = () => {
         }
       );
 
-      if (videoRef.current) {
-        videoRef.current.playsInline = true;
-        videoRef.current.muted = true;
-        videoRef.current.disablePictureInPicture = true;
-      }
-
       await qrScannerRef.current.start();
       
-      // visual feedback for scanning
+      // Visual feedback for scanning
       const scanRegion = document.createElement('div');
       scanRegion.style.cssText = `
         position: absolute;
@@ -240,10 +203,9 @@ export const ScannerPage: React.FC = () => {
     setTimeout(startCameraScanning, 300);
   };
 
-  // NEW: Handle camera activation
   const activateCamera = async () => {
     setIsCameraActive(true);
-    await initCameraWhenReady();
+    await startCameraScanning();
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -500,57 +462,56 @@ export const ScannerPage: React.FC = () => {
                 )}
               </div>
 
-                  {/* video container */}
-                  <div id="video-container" className="relative">
-                    <video
-                      ref={(el) => {
-                        videoRef.current = el;
-                        setVideoReady(!!el);
-                      }}
-                      className="w-full max-w-md mx-auto rounded-lg border-2 border-blue-500 bg-black"
-                      playsInline
-                      muted
-                      style={{ maxHeight: '400px' }}
-                    />
-                    {/* Scanning animation */}
-                    {isCameraActive && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="border-4 border-green-500 border-dashed rounded-xl animate-pulse" 
-                             style={{ width: '70%', height: '70%' }} />
-                      </div>
-                    )}
-                  </div>
+              {/* Live Camera Scanner */}
+              <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+                    <Camera className="w-5 h-5 text-green-600" />
+                    <span>Live Camera Scan</span>
+                  </h2>
                   
-                  {/* Updated start button */}
-                  <button
-                    onClick={startCameraScanning}
-                    disabled={!videoReady || cameraPermission !== 'granted'}
-                    className={`bg-blue-600 text-white px-6 py-3 rounded-lg ${
-                      videoReady && cameraPermission === 'granted' 
-                        ? 'hover:bg-blue-700' 
-                        : 'opacity-50 cursor-not-allowed'
-                    }`}
-                  >
-                    {cameraPermission === 'granted' ? 'Start Scanner' : 'Camera Permission Required'}
-                  </button>
+                  {availableCameras.length > 1 && (
+                    <button
+                      onClick={switchCamera}
+                      disabled={isCameraActive}
+                      className="text-sm bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+                    >
+                      Switch Camera
+                    </button>
+                  )}
+                </div>
+                
+                <div className="text-center">
+                  {!isCameraActive ? (
+                    <div className="bg-gray-100 rounded-lg p-8">
+                      <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <button
+                        onClick={activateCamera}
+                        disabled={cameraPermission !== 'granted'}
+                        className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {cameraPermission === 'granted' ? 'Start Scanner' : 'Camera Permission Required'}
+                      </button>
                       <p className="text-sm text-gray-500 mt-2">
                         Point your camera at a QR code to scan
                       </p>
                     </div>
                   ) : (
                     <div className="relative">
-                      <video
-                        ref={videoRef}
-                        className="w-full max-w-md mx-auto rounded-lg border-2 border-green-500"
-                        playsInline
-                        muted
-                        style={{ maxHeight: '400px' }}
-                      />
-                      <div className="absolute inset-0 pointer-events-none">
-                        <div className="absolute inset-4 border-2 border-green-500 rounded-lg opacity-50"></div>
-                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-                          <div className="w-48 h-48 border-2 border-green-500 rounded-lg bg-green-500 bg-opacity-10"></div>
-                        </div>
+                      <div id="video-container" className="relative">
+                        <video
+                          ref={videoRef}
+                          className="w-full max-w-md mx-auto rounded-lg border-2 border-green-500 bg-black"
+                          playsInline
+                          muted
+                          style={{ maxHeight: '400px' }}
+                        />
+                        {isCameraActive && (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="border-4 border-green-500 border-dashed rounded-xl animate-pulse" 
+                                  style={{ width: '70%', height: '70%' }} />
+                          </div>
+                        )}
                       </div>
                       <div className="mt-4 space-x-3">
                         <button
@@ -558,7 +519,7 @@ export const ScannerPage: React.FC = () => {
                           className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors"
                         >
                           <StopCircle className="w-4 h-4 inline mr-2" />
-                          Stop Camera
+                          Stop Scanner
                         </button>
                         {availableCameras.length > 1 && (
                           <button
@@ -577,7 +538,7 @@ export const ScannerPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* File Upload and Manual Input sections remain the same */}
+              {/* File Upload and Manual Input */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                 {/* File Upload */}
                 <div className="bg-white rounded-lg shadow-md p-6">
@@ -776,34 +737,36 @@ export const ScannerPage: React.FC = () => {
           </div>
           
           <div className="text-center">
-              {!isCameraActive ? (
-            <div className="bg-gray-100 rounded-lg p-8">
-              <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <button
-                onClick={activateCamera}  // Updated to use activateCamera
-                disabled={cameraPermission !== 'granted'}
-                className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {cameraPermission === 'granted' ? 'Start Scanner' : 'Camera Permission Required'}
-              </button>
-              <p className="text-sm text-gray-500 mt-2">
-                Point your camera at a QR code to scan
-              </p>
-            </div>
-          ) : (
+            {!isCameraActive ? (
+              <div className="bg-gray-100 rounded-lg p-8">
+                <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <button
+                  onClick={activateCamera}
+                  disabled={cameraPermission !== 'granted'}
+                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {cameraPermission === 'granted' ? 'Start Scanner' : 'Camera Permission Required'}
+                </button>
+                <p className="text-sm text-gray-500 mt-2">
+                  Point your camera at a QR code to scan
+                </p>
+              </div>
+            ) : (
               <div className="relative">
-                <video
-                  ref={videoRef}
-                  className="w-full max-w-md mx-auto rounded-lg border-2 border-blue-500"
-                  playsInline
-                  muted
-                  style={{ maxHeight: '400px' }}
-                />
-                <div className="absolute inset-0 pointer-events-none">
-                  <div className="absolute inset-4 border-2 border-blue-500 rounded-lg opacity-50"></div>
-                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-                    <div className="w-48 h-48 border-2 border-blue-500 rounded-lg bg-blue-500 bg-opacity-10"></div>
-                  </div>
+                <div id="video-container" className="relative">
+                  <video
+                    ref={videoRef}
+                    className="w-full max-w-md mx-auto rounded-lg border-2 border-blue-500 bg-black"
+                    playsInline
+                    muted
+                    style={{ maxHeight: '400px' }}
+                  />
+                  {isCameraActive && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="border-4 border-blue-500 border-dashed rounded-xl animate-pulse" 
+                            style={{ width: '70%', height: '70%' }} />
+                    </div>
+                  )}
                 </div>
                 <div className="mt-4 space-x-3">
                   <button
@@ -811,7 +774,7 @@ export const ScannerPage: React.FC = () => {
                     className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors"
                   >
                     <StopCircle className="w-4 h-4 inline mr-2" />
-                    Stop Camera
+                    Stop Scanner
                   </button>
                   {availableCameras.length > 1 && (
                     <button
@@ -893,7 +856,9 @@ export const ScannerPage: React.FC = () => {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-gray-600">Scanner:</span>
-              <span className="text-green-600 font-medium">Ready</span>
+              <span className={isCameraActive ? "text-green-600 font-medium" : "text-gray-600"}>
+                {isCameraActive ? 'Active' : 'Ready'}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-gray-600">Network:</span>
@@ -972,7 +937,7 @@ export const ScannerPage: React.FC = () => {
               <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">
                 1
               </div>
-              <p><strong>Live Camera:</strong> Click "Start Camera" and point at QR codes for instant scanning</p>
+              <p><strong>Live Camera:</strong> Click "Start Scanner" and point at QR codes for instant scanning</p>
             </div>
             <div className="flex items-start space-x-2">
               <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">
