@@ -7,6 +7,13 @@ import React, {
 } from 'react';
 import { ethers } from 'ethers';
 
+// Polyfill for global object required by WalletConnect
+if (typeof window !== 'undefined') {
+  if (typeof window.global === 'undefined') {
+    window.global = window;
+  }
+}
+
 interface Web3ContextType {
   account: string | null;
   provider: ethers.providers.Web3Provider | null;
@@ -29,7 +36,6 @@ const CROSSFI_CHAIN_CONFIG = {
   blockExplorerUrls: ['https://scan.testnet.ms'],
 };
 
-// WalletConnect configuration
 const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WC_PROJECT_ID;
 
 export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -38,15 +44,14 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [signer, setSigner] = useState<ethers.Signer | null>(null);
   const [chainId, setChainId] = useState<number | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [walletConnectProvider, setWalletConnectProvider] = useState<any>(null);
 
   const isConnected = Boolean(account && provider);
-
-  // Helper: detect mobile browsers
-  const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
   // Initialize on mount
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    
     checkConnection();
     
     // Listen for account changes
@@ -62,13 +67,18 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
         window.ethereum.removeListener('chainChanged', handleChainChanged);
         window.ethereum.removeListener('disconnect', handleDisconnect);
       }
+      
+      if (walletConnectProvider) {
+        walletConnectProvider.removeListener('accountsChanged', handleAccountsChanged);
+        walletConnectProvider.removeListener('chainChanged', handleChainChanged);
+        walletConnectProvider.removeListener('disconnect', handleDisconnect);
+      }
     };
-  }, []);
+  }, [walletConnectProvider]);
 
   // Attempt to restore existing connection
   const checkConnection = async () => {
     try {
-      // Check for injected provider
       const ethereum = getInjectedProvider();
       if (!ethereum) return;
       
@@ -88,12 +98,7 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const getInjectedProvider = () => {
-    // Check for MetaMask
-    if (window.ethereum?.isMetaMask) {
-      return window.ethereum;
-    }
-    
-    // Check for other injected wallets
+    // Check for modern EIP-1193 providers
     if (window.ethereum) {
       return window.ethereum;
     }
@@ -111,27 +116,29 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Dynamic import for WalletConnect
       const WalletConnectProvider = (await import('@walletconnect/web3-provider')).default;
       
-      const walletConnectProvider = new WalletConnectProvider({
+      const wcProvider = new WalletConnectProvider({
         rpc: {
           4157: 'https://rpc.testnet.ms',
+          1: 'https://mainnet.infura.io/v3/',
+          56: 'https://bsc-dataseed.binance.org/',
         },
         chainId: 4157,
         qrcode: true,
         qrcodeModalOptions: {
           mobileLinks: [
-            'rainbow',
             'metamask',
-            'argent',
             'trust',
+            'rainbow',
+            'argent',
             'imtoken',
             'pillar',
           ],
         },
       });
 
-      await walletConnectProvider.enable();
+      await wcProvider.enable();
       
-      const web3Provider = new ethers.providers.Web3Provider(walletConnectProvider);
+      const web3Provider = new ethers.providers.Web3Provider(wcProvider);
       const signer = web3Provider.getSigner();
       const address = await signer.getAddress();
       const network = await web3Provider.getNetwork();
@@ -140,11 +147,12 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setSigner(signer);
       setAccount(address);
       setChainId(network.chainId);
+      setWalletConnectProvider(wcProvider);
 
       // Listen for WalletConnect events
-      walletConnectProvider.on('accountsChanged', handleAccountsChanged);
-      walletConnectProvider.on('chainChanged', handleChainChanged);
-      walletConnectProvider.on('disconnect', handleDisconnect);
+      wcProvider.on('accountsChanged', handleAccountsChanged);
+      wcProvider.on('chainChanged', handleChainChanged);
+      wcProvider.on('disconnect', handleDisconnect);
 
     } catch (error) {
       console.error('WalletConnect connection failed:', error);
@@ -161,10 +169,14 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }
 
   function handleChainChanged(chainIdHex: string) {
-    const newChainId = parseInt(chainIdHex, 16);
-    setChainId(newChainId);
-    // Reload the page to reset the app state
-    window.location.reload();
+    try {
+      const newChainId = parseInt(chainIdHex, 16);
+      if (!isNaN(newChainId)) {
+        setChainId(newChainId);
+      }
+    } catch (e) {
+      console.error('Error parsing chain ID:', e);
+    }
   }
 
   function handleDisconnect() {
@@ -179,6 +191,11 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsConnecting(true);
 
     try {
+      // Detect mobile browsers
+      const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+      );
+
       if (walletType === 'walletconnect' || (isMobile && !getInjectedProvider())) {
         await connectToWalletConnect();
         return;
@@ -189,7 +206,6 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!ethereum) {
         // For mobile devices, try to open MetaMask app
         if (isMobile) {
-          const dappUrl = encodeURIComponent(window.location.href);
           const metamaskUrl = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`;
           window.open(metamaskUrl, '_blank');
           throw new Error('Please open this page in MetaMask mobile browser or use WalletConnect');
@@ -200,9 +216,12 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const web3Provider = new ethers.providers.Web3Provider(ethereum, 'any');
       
-      // Request account access
-      await web3Provider.send('eth_requestAccounts', []);
+      const accounts = await web3Provider.send('eth_requestAccounts', []);
       
+      if (!accounts || accounts.length === 0) {
+        throw new Error('No accounts found');
+      }
+
       const signer = web3Provider.getSigner();
       const address = await signer.getAddress();
       const network = await web3Provider.getNetwork();
@@ -214,11 +233,7 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       // Switch to CrossFi if on wrong network
       if (network.chainId !== 4157) {
-        try {
-          await switchToCrossFi();
-        } catch (switchError) {
-          console.warn('Failed to switch network:', switchError);
-        }
+        await switchToCrossFi();
       }
 
     } catch (error: any) {
@@ -230,14 +245,19 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const disconnectWallet = () => {
+    if (walletConnectProvider) {
+      walletConnectProvider.disconnect();
+    }
+    
     setAccount(null);
     setProvider(null);
     setSigner(null);
     setChainId(null);
+    setWalletConnectProvider(null);
   };
 
   const switchToCrossFi = async () => {
-    const ethereum = getInjectedProvider();
+    const ethereum = walletConnectProvider || getInjectedProvider();
     if (!ethereum) throw new Error('No wallet detected');
 
     try {
@@ -247,7 +267,7 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
     } catch (switchError: any) {
       // Add network if it doesn't exist
-      if (switchError.code === 4902) {
+      if (switchError.code === 4902 || switchError.error?.code === 4902) {
         await ethereum.request({
           method: 'wallet_addEthereumChain',
           params: [CROSSFI_CHAIN_CONFIG],
@@ -286,10 +306,10 @@ export const useWeb3 = () => {
   return context;
 };
 
-// Extend window interface for TypeScript
 declare global {
   interface Window {
     ethereum?: any;
     web3?: any;
+    global?: typeof globalThis;
   }
 }
