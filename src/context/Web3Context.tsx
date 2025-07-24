@@ -37,7 +37,7 @@ const CROSSFI_CHAIN_CONFIG = {
   blockExplorerUrls: ['https://scan.testnet.ms'],
 };
 
-const WALLETCONNECT_PROJECT_ID = "bd8322da1682ec5afc8ecdb3ce24c57d";
+const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WC_PROJECT_ID;
 const WALLETCONNECT_APP_NAME = 'mini';
 
 export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -47,7 +47,7 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [chainId, setChainId] = useState<number | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [wcProvider, setWcProvider] = useState<WalletConnectProvider | null>(null);
-  const [wcModal, setWcModal] = useState<WalletConnectModal | null>(null);
+  const [wcModal, setWcModal] = useState<InstanceType<typeof WalletConnectModal> | null>(null); // Updated type
 
   const isConnected = Boolean(account && provider);
 
