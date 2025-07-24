@@ -44,22 +44,23 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
     setPurchaseStep('processing');
 
     try {
-    // Step 1: Sign purchase message
-    const message = `Purchase ticket for event ${event.id}, tier ${tier.id}, buyer ${account}`;
-    const signature = await signer.signMessage(message);
-    
-    // Step 2: Send purchase request to backend
-  const response = await fetch(`/api/events/${event.id}/purchase`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    tierId: tier.id,
-    buyerAddress: account,
-    signature: signature,
-    message: message,
-    tokenType: tier.tokenType
-  }),
-});
+      // Step 1: Sign purchase message
+      const message = `Purchase ticket for event ${event.id}, tier ${tier.id}, buyer ${account}, timestamp ${Date.now()}`;
+      toast.info('Please sign the message in your wallet...');
+      const signature = await signer.signMessage(message);
+      
+      // Step 2: Send purchase request to backend
+      const response = await fetch(`/api/events/${event.id}/purchase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tierId: tier.id,
+          buyerAddress: account,
+          signature: signature,
+          message: message,
+          tokenType: tier.tokenType
+        }),
+      });
 
       const purchaseData = await response.json();
       
@@ -67,7 +68,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
         throw new Error(purchaseData.error || 'Purchase failed');
       }
 
-      // Step 2: Execute blockchain transaction
+      // Step 3: Execute blockchain transaction
       const contractAddress = import.meta.env.VITE_EVENT_MANAGER_CONTRACT;
       if (!contractAddress) {
         throw new Error('Contract address not configured');
@@ -95,6 +96,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
       
       // Execute purchase transaction
       const price = ethers.utils.parseEther(tier.price);
+      toast.info('Confirm the purchase transaction in your wallet...');
       const tx = await contract.buyTicket(
         event.id,
         tier.id,
