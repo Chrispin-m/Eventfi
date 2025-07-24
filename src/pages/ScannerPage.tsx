@@ -28,14 +28,16 @@ export const ScannerPage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const qrScannerRef = useRef<QrScanner | null>(null);
+  const cameraInitTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Check camera permissions and available cameras on component mount
+  // Check camera permissions and available cameras
   useEffect(() => {
     checkCameraPermissions();
     listAvailableCameras();
     
     return () => {
       stopCameraScanning();
+      if (cameraInitTimer.current) clearTimeout(cameraInitTimer.current);
     };
   }, []);
 
@@ -43,7 +45,6 @@ export const ScannerPage: React.FC = () => {
     try {
       setCameraPermission('checking');
       
-      // Check if camera is supported
       const hasCamera = await QrScanner.hasCamera();
       if (!hasCamera) {
         setCameraPermission('denied');
@@ -51,17 +52,14 @@ export const ScannerPage: React.FC = () => {
         return;
       }
 
-      // Check current permission status
       if (navigator.permissions) {
         const permission = await navigator.permissions.query({ name: 'camera' as PermissionName });
         setCameraPermission(permission.state as 'granted' | 'denied' | 'prompt');
         
-        // Listen for permission changes
         permission.onchange = () => {
           setCameraPermission(permission.state as 'granted' | 'denied' | 'prompt');
         };
       } else {
-        // Fallback for browsers without permissions API
         setCameraPermission('prompt');
       }
     } catch (error) {
@@ -74,7 +72,6 @@ export const ScannerPage: React.FC = () => {
     try {
       const cameras = await QrScanner.listCameras(true);
       setAvailableCameras(cameras);
-      console.log('Available cameras:', cameras);
     } catch (error) {
       console.error('Error listing cameras:', error);
     }
@@ -84,20 +81,16 @@ export const ScannerPage: React.FC = () => {
     try {
       setCameraPermission('checking');
       
-      // Request camera access
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: selectedCamera === 'environment' ? 'environment' : 'user'
         } 
       });
       
-      // Stop the stream immediately - we just needed it for permission
       stream.getTracks().forEach(track => track.stop());
       
       setCameraPermission('granted');
       toast.success('Camera permission granted!');
-      
-      // Refresh available cameras list
       await listAvailableCameras();
       
     } catch (error) {
@@ -107,43 +100,56 @@ export const ScannerPage: React.FC = () => {
     }
   };
 
-  const startCameraScanning = async () => {
-    if (!videoRef.current) {
-      toast.error('Video element not ready');
-      return;
+  // NEW: Initialize camera when video element is ready
+  const initCameraWhenReady = async () => {
+    if (videoRef.current) {
+      await startCameraScanning();
+    } else {
+      // Retry initialization with exponential backoff
+      let retryCount = 0;
+      const maxRetries = 5;
+      const checkVideoReady = () => {
+        if (videoRef.current) {
+          startCameraScanning();
+        } else if (retryCount < maxRetries) {
+          retryCount++;
+          cameraInitTimer.current = setTimeout(checkVideoReady, 300 * retryCount);
+        } else {
+          toast.error('Failed to initialize camera. Please try again.');
+          setIsCameraActive(false);
+        }
+      };
+      cameraInitTimer.current = setTimeout(checkVideoReady, 300);
     }
+  };
 
+  const startCameraScanning = async () => {
     if (cameraPermission !== 'granted') {
       await requestCameraPermission();
       if (cameraPermission !== 'granted') return;
     }
 
     try {
-      setIsCameraActive(true);
-      toast.info('Starting camera...');
+      toast.info('Initializing scanner...');
       
-      // Create QR scanner instance with enhanced options
       qrScannerRef.current = new QrScanner(
-        videoRef.current,
+        videoRef.current!,
         (result) => {
           console.log('QR Code detected:', result.data);
           toast.success('QR Code detected!');
           verifyTicket(result.data);
-          // Don't stop camera automatically - let user decide
         },
         {
           onDecodeError: (error) => {
-            // Silently handle decode errors - they're normal when no QR code is visible
-            console.log('Decode error (normal):', error.message);
+            console.log('Decode error:', error.message);
           },
           highlightScanRegion: true,
           highlightCodeOutline: true,
           preferredCamera: selectedCamera,
-          maxScansPerSecond: 5, // Limit scan rate for better performance
+          maxScansPerSecond: 5,
           calculateScanRegion: (video) => {
-            // Create a centered square scan region
             const smallerDimension = Math.min(video.videoWidth, video.videoHeight);
-            const scanSize = Math.floor(smallerDimension * 0.6);
+            const scanSize = Math.floor(smallerDimension * 0.7);
             return {
               x: Math.floor((video.videoWidth - scanSize) / 2),
               y: Math.floor((video.videoHeight - scanSize) / 2),
@@ -155,7 +161,7 @@ export const ScannerPage: React.FC = () => {
       );
 
       await qrScannerRef.current.start();
-      toast.success('Camera started - point at QR code to scan');
+      toast.success('Scanner ready - point at QR code');
       
     } catch (error) {
       console.error('Error starting camera:', error);
@@ -181,7 +187,7 @@ export const ScannerPage: React.FC = () => {
       qrScannerRef.current = null;
     }
     setIsCameraActive(false);
-    toast.info('Camera stopped');
+    toast.info('Scanner stopped');
   };
 
   const switchCamera = async () => {
@@ -191,20 +197,22 @@ export const ScannerPage: React.FC = () => {
     }
 
     const wasActive = isCameraActive;
-    if (wasActive) {
-      stopCameraScanning();
-    }
+    if (wasActive) stopCameraScanning();
 
-    // Toggle between environment and user cameras
     const newCamera = selectedCamera === 'environment' ? 'user' : 'environment';
     setSelectedCamera(newCamera);
     
     if (wasActive) {
-      // Small delay to ensure camera is properly released
       setTimeout(() => {
-        startCameraScanning();
+        setIsCameraActive(true);
       }, 500);
     }
+  };
+
+  // NEW: Handle camera activation
+  const activateCamera = async () => {
+    setIsCameraActive(true);
+    await initCameraWhenReady();
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -218,19 +226,15 @@ export const ScannerPage: React.FC = () => {
         returnDetailedScanResult: true 
       });
       
-      console.log('QR Code from file:', result.data);
       verifyTicket(result.data);
-      toast.success('QR code read from image successfully');
+      toast.success('QR code scanned successfully');
       
     } catch (error) {
-      console.error('Error reading QR code from file:', error);
-      toast.error('Could not read QR code from image. Please ensure the image contains a clear QR code.');
+      console.error('Error reading QR code:', error);
+      toast.error('Could not read QR code. Ensure image contains a clear QR code.');
     }
 
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleManualVerification = () => {
@@ -738,21 +742,21 @@ export const ScannerPage: React.FC = () => {
           </div>
           
           <div className="text-center">
-            {!isCameraActive ? (
-              <div className="bg-gray-100 rounded-lg p-8">
-                <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <button
-                  onClick={startCameraScanning}
-                  disabled={cameraPermission !== 'granted'}
-                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {cameraPermission === 'granted' ? 'Start Camera' : 'Camera Permission Required'}
-                </button>
-                <p className="text-sm text-gray-500 mt-2">
-                  Point your camera at a QR code to scan
-                </p>
-              </div>
-            ) : (
+              {!isCameraActive ? (
+            <div className="bg-gray-100 rounded-lg p-8">
+              <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <button
+                onClick={activateCamera}  // Updated to use activateCamera
+                disabled={cameraPermission !== 'granted'}
+                className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {cameraPermission === 'granted' ? 'Start Scanner' : 'Camera Permission Required'}
+              </button>
+              <p className="text-sm text-gray-500 mt-2">
+                Point your camera at a QR code to scan
+              </p>
+            </div>
+          ) : (
               <div className="relative">
                 <video
                   ref={videoRef}
