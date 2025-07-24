@@ -191,19 +191,25 @@ router.get('/', asyncHandler(async (req, res) => {
  */
 router.post('/:id/purchase', asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { tierId, buyerAddress, signature, tokenType } = req.body;
+  const { eventId, tierId, buyerAddress, signature, message, tokenType } = req.body;
 
-  if (!id || !tierId || !buyerAddress || !signature) {
+  if (!eventId || !tierId || !buyerAddress || !signature || !message) {
     return res.status(400).json({ 
-      error: 'Missing required fields: eventId, tierId, buyerAddress, signature' 
+      error: 'Missing required fields: eventId, tierId, buyerAddress, signature, message' 
     });
   }
 
   const contract = getEventManagerContract();
+  
+  if (!contract) {
+    return res.status(500).json({ 
+      error: 'Contract not configured',
+      details: 'EVENT_MANAGER_CONTRACT environment variable not set' 
+    });
+  }
 
   try {
     // Verify the buyer's signature (simplified for MVP)
-    const message = `Purchase ticket for event ${id}, tier ${tierId}`;
     const signerAddress = ethers.utils.verifyMessage(message, signature);
     
     if (signerAddress.toLowerCase() !== buyerAddress.toLowerCase()) {
@@ -211,7 +217,7 @@ router.post('/:id/purchase', asyncHandler(async (req, res) => {
     }
 
     // Get ticket tier details
-    const tierData = await contract.getTicketTier(id, tierId);
+    const tierData = await contract.getTicketTier(eventId, tierId);
     const price = tierData[1];
     const available = parseInt(tierData[2].toString()) - parseInt(tierData[3].toString());
 
@@ -221,11 +227,11 @@ router.post('/:id/purchase', asyncHandler(async (req, res) => {
 
     // Generate metadata URI for the ticket (QR code will include this info)
     const ticketMetadata = {
-      eventId: id,
+      eventId: eventId,
       tierId: tierId,
       buyer: buyerAddress,
       purchaseTime: Math.floor(Date.now() / 1000),
-      qrData: `${id}-${tierId}-${buyerAddress}-${Date.now()}`
+      qrData: `${eventId}-${tierId}-${buyerAddress}-${Date.now()}`
     };
 
     const metadataURI = `data:application/json;base64,${Buffer.from(JSON.stringify(ticketMetadata)).toString('base64')}`;
@@ -234,7 +240,7 @@ router.post('/:id/purchase', asyncHandler(async (req, res) => {
     res.json({
       success: true,
       purchaseDetails: {
-        eventId: id,
+        eventId: eventId,
         tierId: tierId,
         price: ethers.utils.formatEther(price),
         tokenType: ['XFI', 'XUSD', 'MPX'][parseInt(tierData[4].toString())],
@@ -246,7 +252,10 @@ router.post('/:id/purchase', asyncHandler(async (req, res) => {
 
   } catch (error) {
     console.error('Error processing purchase:', error);
-    res.status(500).json({ error: 'Failed to process ticket purchase' });
+    res.status(500).json({ 
+      error: 'Failed to process ticket purchase',
+      details: error.message 
+    });
   }
 }));
 

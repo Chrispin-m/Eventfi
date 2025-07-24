@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Ticket, Loader, CheckCircle, AlertCircle } from 'lucide-react';
 import { useWeb3 } from '../context/Web3Context';
+import { ethers } from 'ethers';
 import { toast } from 'react-toastify';
 
 interface Event {
@@ -43,6 +44,10 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
     setPurchaseStep('processing');
 
     try {
+      // Step 1: Sign purchase message
+      const message = `Purchase ticket for event ${event.id}, tier ${tier.id}, buyer ${account}`;
+      const signature = await signer.signMessage(message);
+      
       // Step 1: Get purchase details from backend
       const response = await fetch(`/api/events/${event.id}/purchase`, {
         method: 'POST',
@@ -50,9 +55,11 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          eventId: event.id,
           tierId: tier.id,
           buyerAddress: account,
-          signature: await signPurchaseMessage(),
+          signature: signature,
+          message: message,
           tokenType: tier.tokenType
         }),
       });
@@ -64,13 +71,47 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
       }
 
       // Step 2: Execute blockchain transaction
-      // Note: In a real implementation, you would call the smart contract here
-      // For this MVP, we'll simulate the transaction
+      const contractAddress = import.meta.env.VITE_EVENT_MANAGER_CONTRACT;
+      if (!contractAddress) {
+        throw new Error('Contract address not configured');
+      }
+
+      const contractABI = [
+        'function buyTicket(uint256 eventId, uint256 tierId, string memory ticketMetadataURI) payable returns (uint256)'
+      ];
+
+      const contract = new ethers.Contract(contractAddress, contractABI, signer);
       
-      await new Promise(resolve => setTimeout(resolve, 3000)); // Simulate transaction time
+      // Create ticket metadata
+      const ticketMetadata = {
+        eventId: event.id,
+        tierId: tier.id,
+        eventTitle: event.title,
+        tierName: tier.name,
+        buyer: account,
+        purchaseTime: Math.floor(Date.now() / 1000),
+        price: tier.price,
+        tokenType: tier.tokenType
+      };
       
-      const mockTxHash = '0x' + Math.random().toString(16).substr(2, 64);
-      setTransactionHash(mockTxHash);
+      const metadataURI = `data:application/json;base64,${Buffer.from(JSON.stringify(ticketMetadata)).toString('base64')}`;
+      
+      // Execute purchase transaction
+      const price = ethers.utils.parseEther(tier.price);
+      const tx = await contract.buyTicket(
+        event.id,
+        tier.id,
+        metadataURI,
+        {
+          value: tier.tokenType === 'XFI' ? price : 0,
+          gasLimit: 1000000
+        }
+      );
+      
+      toast.info('Transaction sent, waiting for confirmation...');
+      const receipt = await tx.wait();
+      
+      setTransactionHash(receipt.transactionHash);
       setPurchaseStep('success');
       
       toast.success('Ticket purchased successfully!');
@@ -83,17 +124,17 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
     } catch (error) {
       console.error('Purchase error:', error);
       setPurchaseStep('error');
-      toast.error(error instanceof Error ? error.message : 'Purchase failed');
+      const errorMessage = error instanceof Error ? error.message : 'Purchase failed';
+      if (errorMessage.includes('user rejected')) {
+        toast.error('Transaction rejected by user');
+      } else if (errorMessage.includes('insufficient funds')) {
+        toast.error('Insufficient funds for transaction');
+      } else {
+        toast.error(errorMessage);
+      }
     } finally {
       setIsPurchasing(false);
     }
-  };
-
-  const signPurchaseMessage = async () => {
-    if (!signer) throw new Error('No signer available');
-    
-    const message = `Purchase ticket for event ${event.id}, tier ${tier.id}`;
-    return await signer.signMessage(message);
   };
 
   const getStepContent = () => {
