@@ -28,14 +28,12 @@ export const ScannerPage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const qrScannerRef = useRef<QrScanner | null>(null);
-  const cameraInitTimer = useRef<NodeJS.Timeout | null>(null);
-  const [videoReady, setVideoReady] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
       stopCameraScanning();
-      if (cameraInitTimer.current) clearTimeout(cameraInitTimer.current);
     };
   }, []);
 
@@ -48,11 +46,23 @@ export const ScannerPage: React.FC = () => {
     }
   };
 
-  const requestCameraPermission = async () => {
+  const handleCameraStart = async () => {
+    if (cameraPermission === 'denied') {
+      toast.error('Camera access denied. Please enable camera permissions in browser settings.');
+      return;
+    }
+
+    setCameraError(null);
+    setIsCameraActive(true);
+    setCameraPermission('checking');
+
     try {
-      setCameraPermission('checking');
-      
-      // Request camera access
+      // Check if video element is available
+      if (!videoRef.current) {
+        throw new Error("Video element not available");
+      }
+
+      // Request camera access directly
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: selectedCamera === 'environment' ? 'environment' : 'user'
@@ -63,49 +73,12 @@ export const ScannerPage: React.FC = () => {
       stream.getTracks().forEach(track => track.stop());
       
       setCameraPermission('granted');
-      toast.success('Camera permission granted!');
       await listAvailableCameras();
       
-    } catch (error) {
-      console.error('Camera permission denied:', error);
-      setCameraPermission('denied');
-      toast.error('Camera permission denied. Please enable camera access in your browser settings.');
-    }
-  };
-
-  const startCameraScanning = async () => {
-    if (cameraPermission === 'denied') {
-      toast.error('Camera access denied. Please enable camera permissions in browser settings.');
-      return;
-    }
-
-    if (cameraPermission === 'prompt' || cameraPermission === 'checking') {
-      await requestCameraPermission();
-      if (cameraPermission !== 'granted') return;
-    }
-
-    try {
-      setIsCameraActive(true);
-      toast.info('Starting scanner...');
-      
-      // Ensure video element exists
-      if (!videoRef.current) {
-        throw new Error("Video element not available");
-      }
-      
-      // Clean up any existing scanner
-      if (qrScannerRef.current) {
-        qrScannerRef.current.stop();
-        qrScannerRef.current.destroy();
-      }
-      
-      // Create QR scanner with optimized settings
+      // Create QR scanner
       qrScannerRef.current = new QrScanner(
         videoRef.current,
-        (result) => {
-          console.log('QR Code detected:', result.data);
-          verifyTicket(result.data);
-        },
+        (result) => verifyTicket(result.data),
         {
           preferredCamera: selectedCamera,
           maxScansPerSecond: 5,
@@ -140,8 +113,11 @@ export const ScannerPage: React.FC = () => {
         toast.error('Camera permission denied. Please enable camera access.');
       } else if (error.name === 'NotFoundError') {
         toast.error('No camera available on this device.');
+        setCameraError('No camera available');
       } else {
-        toast.error(`Camera error: ${error.message || 'Please try again'}`);
+        const errorMsg = error.message || 'Please try again';
+        toast.error(`Camera error: ${errorMsg}`);
+        setCameraError(errorMsg);
       }
     }
   };
@@ -165,8 +141,8 @@ export const ScannerPage: React.FC = () => {
     stopCameraScanning();
     setSelectedCamera(prev => prev === 'environment' ? 'user' : 'environment');
     
-    // Delay to allow camera release
-    setTimeout(startCameraScanning, 300);
+    // Restart with new camera
+    setTimeout(handleCameraStart, 300);
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -392,37 +368,6 @@ export const ScannerPage: React.FC = () => {
           {/* Continue with scanner if credentials provided */}
           {staffCode && eventId && (
             <>
-              {/* Camera Permission Status */}
-              <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                    <Camera className="w-5 h-5 text-green-600" />
-                    <span>Camera Status</span>
-                  </h2>
-                  <div className="flex items-center space-x-2">
-                    {getCameraStatusIcon()}
-                    <span className="text-sm font-medium">{getCameraStatusText()}</span>
-                  </div>
-                </div>
-
-                {cameraPermission === 'denied' && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                    <p className="text-red-800 text-sm">
-                      Camera access is required for live scanning. Please enable camera permissions in your browser settings and refresh the page.
-                    </p>
-                  </div>
-                )}
-
-                {cameraPermission === 'prompt' && (
-                  <button
-                    onClick={requestCameraPermission}
-                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Grant Camera Permission
-                  </button>
-                )}
-              </div>
-
               {/* Live Camera Scanner */}
               <div className="bg-white rounded-lg shadow-md p-6 mb-8">
                 <div className="flex items-center justify-between mb-4">
@@ -447,13 +392,15 @@ export const ScannerPage: React.FC = () => {
                     <div className="bg-gray-100 rounded-lg p-8">
                       <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                       <button
-                        onClick={startCameraScanning}
-                        disabled={cameraPermission === 'denied'}
+                        onClick={handleCameraStart}
+                        disabled={cameraPermission === 'denied' || cameraError === 'No camera available'}
                         className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {cameraPermission === 'denied' 
                           ? 'Camera Blocked' 
-                          : 'Start Scanner'}
+                          : cameraError === 'No camera available'
+                            ? 'No Camera Found'
+                            : 'Start Scanner'}
                       </button>
                       <p className="text-sm text-gray-500 mt-2">
                         Point your camera at a QR code to scan
@@ -645,37 +592,6 @@ export const ScannerPage: React.FC = () => {
           <p className="text-gray-600">Verify and validate event tickets using QR codes</p>
         </div>
 
-        {/* Camera Permission Status */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-              <Camera className="w-5 h-5 text-blue-600" />
-              <span>Camera Status</span>
-            </h2>
-            <div className="flex items-center space-x-2">
-              {getCameraStatusIcon()}
-              <span className="text-sm font-medium">{getCameraStatusText()}</span>
-            </div>
-          </div>
-
-          {cameraPermission === 'denied' && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-              <p className="text-red-800 text-sm">
-                Camera access is required for live scanning. Please enable camera permissions in your browser settings and refresh the page.
-              </p>
-            </div>
-          )}
-
-          {cameraPermission === 'prompt' && (
-            <button
-              onClick={requestCameraPermission}
-              className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Grant Camera Permission
-            </button>
-          )}
-        </div>
-
         {/* Live Camera Scanner */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
@@ -700,13 +616,15 @@ export const ScannerPage: React.FC = () => {
               <div className="bg-gray-100 rounded-lg p-8">
                 <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <button
-                  onClick={startCameraScanning}
-                  disabled={cameraPermission === 'denied'}
+                  onClick={handleCameraStart}
+                  disabled={cameraPermission === 'denied' || cameraError === 'No camera available'}
                   className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {cameraPermission === 'denied' 
                     ? 'Camera Blocked' 
-                    : 'Start Scanner'}
+                    : cameraError === 'No camera available'
+                      ? 'No Camera Found'
+                      : 'Start Scanner'}
                 </button>
                 <p className="text-sm text-gray-500 mt-2">
                   Point your camera at a QR code to scan
