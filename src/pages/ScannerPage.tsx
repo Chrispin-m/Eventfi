@@ -29,6 +29,8 @@ export const ScannerPage: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const qrScannerRef = useRef<QrScanner | null>(null);
   const cameraInitTimer = useRef<NodeJS.Timeout | null>(null);
+  const [videoReady, setVideoReady] = useState(false);
+
 
   // Check camera permissions and available cameras
   useEffect(() => {
@@ -123,59 +125,97 @@ export const ScannerPage: React.FC = () => {
     }
   };
 
-  const startCameraScanning = async () => {
+
+
+
+
+
+
+
+  
+ const startCameraScanning = async () => {
     if (cameraPermission !== 'granted') {
       await requestCameraPermission();
       if (cameraPermission !== 'granted') return;
     }
 
     try {
+      setIsCameraActive(true);
       toast.info('Initializing scanner...');
       
+      if (!videoRef.current) {
+        throw new Error("Video element not initialized");
+      }
+      
+      if (qrScannerRef.current) {
+        qrScannerRef.current.stop();
+        qrScannerRef.current.destroy();
+      }
+      
+      // Create QR scanner with optimized settings
       qrScannerRef.current = new QrScanner(
-        videoRef.current!,
+        videoRef.current,
         (result) => {
           console.log('QR Code detected:', result.data);
-          toast.success('QR Code detected!');
           verifyTicket(result.data);
         },
         {
-          onDecodeError: (error) => {
-            console.log('Decode error:', error.message);
-          },
-          highlightScanRegion: true,
-          highlightCodeOutline: true,
           preferredCamera: selectedCamera,
           maxScansPerSecond: 5,
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
           calculateScanRegion: (video) => {
-            const smallerDimension = Math.min(video.videoWidth, video.videoHeight);
-            const scanSize = Math.floor(smallerDimension * 0.7);
+            const size = Math.min(video.videoWidth, video.videoHeight) * 0.7;
             return {
-              x: Math.floor((video.videoWidth - scanSize) / 2),
-              y: Math.floor((video.videoHeight - scanSize) / 2),
-              width: scanSize,
-              height: scanSize,
+              x: (video.videoWidth - size) / 2,
+              y: (video.videoHeight - size) / 2,
+              width: size,
+              height: size,
             };
           },
+          onDecodeError: (error) => {
+            if (!error?.message?.includes('No QR code found')) {
+              console.debug('Scan error:', error);
+            }
+          }
         }
       );
 
+      if (videoRef.current) {
+        videoRef.current.playsInline = true;
+        videoRef.current.muted = true;
+        videoRef.current.disablePictureInPicture = true;
+      }
+
       await qrScannerRef.current.start();
-      toast.success('Scanner ready - point at QR code');
       
+      // visual feedback for scanning
+      const scanRegion = document.createElement('div');
+      scanRegion.style.cssText = `
+        position: absolute;
+        top: 50%; left: 50%;
+        width: 70%; height: 70%;
+        transform: translate(-50%, -50%);
+        border: 4px solid rgba(0, 255, 0, 0.5);
+        border-radius: 8px;
+        box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        z-index: 10;
+        pointer-events: none;
+      `;
+      document.getElementById('video-container')?.appendChild(scanRegion);
+      
+      toast.success('Scanner ready - point at QR code');
+
     } catch (error) {
-      console.error('Error starting camera:', error);
+      console.error('Camera initialization failed:', error);
       setIsCameraActive(false);
       
       if (error.name === 'NotAllowedError') {
-        setCameraPermission('denied');
-        toast.error('Camera permission denied. Please enable camera access and try again.');
+        toast.error('Camera permission denied. Please enable camera access.');
       } else if (error.name === 'NotFoundError') {
-        toast.error('No camera found on this device.');
-      } else if (error.name === 'NotReadableError') {
-        toast.error('Camera is already in use by another application.');
+        toast.error('No camera available on this device.');
       } else {
-        toast.error('Failed to start camera. Please check your camera settings.');
+        toast.error(`Camera error: ${error.message || 'Please try again'}`);
       }
     }
   };
@@ -191,22 +231,13 @@ export const ScannerPage: React.FC = () => {
   };
 
   const switchCamera = async () => {
-    if (availableCameras.length <= 1) {
-      toast.info('Only one camera available');
-      return;
-    }
-
-    const wasActive = isCameraActive;
-    if (wasActive) stopCameraScanning();
-
-    const newCamera = selectedCamera === 'environment' ? 'user' : 'environment';
-    setSelectedCamera(newCamera);
+    if (availableCameras.length <= 1) return;
     
-    if (wasActive) {
-      setTimeout(() => {
-        setIsCameraActive(true);
-      }, 500);
-    }
+    stopCameraScanning();
+    setSelectedCamera(prev => prev === 'environment' ? 'user' : 'environment');
+    
+    // Delay to allow camera release
+    setTimeout(startCameraScanning, 300);
   };
 
   // NEW: Handle camera activation
@@ -469,36 +500,39 @@ export const ScannerPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Live Camera Scanner */}
-              <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                    <Camera className="w-5 h-5 text-green-600" />
-                    <span>Live Camera Scan</span>
-                  </h2>
+                  {/* video container */}
+                  <div id="video-container" className="relative">
+                    <video
+                      ref={(el) => {
+                        videoRef.current = el;
+                        setVideoReady(!!el);
+                      }}
+                      className="w-full max-w-md mx-auto rounded-lg border-2 border-blue-500 bg-black"
+                      playsInline
+                      muted
+                      style={{ maxHeight: '400px' }}
+                    />
+                    {/* Scanning animation */}
+                    {isCameraActive && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="border-4 border-green-500 border-dashed rounded-xl animate-pulse" 
+                             style={{ width: '70%', height: '70%' }} />
+                      </div>
+                    )}
+                  </div>
                   
-                  {availableCameras.length > 1 && (
-                    <button
-                      onClick={switchCamera}
-                      disabled={isCameraActive}
-                      className="text-sm bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
-                    >
-                      Switch Camera
-                    </button>
-                  )}
-                </div>
-                
-                <div className="text-center">
-                  {!isCameraActive ? (
-                    <div className="bg-gray-100 rounded-lg p-8">
-                      <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <button
-                        onClick={startCameraScanning}
-                        disabled={cameraPermission !== 'granted'}
-                        className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {cameraPermission === 'granted' ? 'Start Camera' : 'Camera Permission Required'}
-                      </button>
+                  {/* Updated start button */}
+                  <button
+                    onClick={startCameraScanning}
+                    disabled={!videoReady || cameraPermission !== 'granted'}
+                    className={`bg-blue-600 text-white px-6 py-3 rounded-lg ${
+                      videoReady && cameraPermission === 'granted' 
+                        ? 'hover:bg-blue-700' 
+                        : 'opacity-50 cursor-not-allowed'
+                    }`}
+                  >
+                    {cameraPermission === 'granted' ? 'Start Scanner' : 'Camera Permission Required'}
+                  </button>
                       <p className="text-sm text-gray-500 mt-2">
                         Point your camera at a QR code to scan
                       </p>
