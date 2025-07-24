@@ -7,7 +7,7 @@ import React, {
   useCallback,
 } from 'react';
 import { ethers } from 'ethers';
-import WalletConnectModal from '@walletconnect/modal';
+import { WalletConnectModal } from '@walletconnect/modal';
 import WalletConnectProvider from '@walletconnect/web3-provider';
 
 // Polyfill for global object required by WalletConnect
