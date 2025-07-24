@@ -6,8 +6,7 @@ export default defineConfig({
     include: ["web3-provider-engine"],
   },
   define: {
-    // alias "global" references to the browser's globalThis
-    global: 'globalThis'
+    global: 'window'
   },
   server: {
     proxy: {
