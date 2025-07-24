@@ -131,12 +131,22 @@ export default async function handler(req, res) {
   if (req.method === 'POST' && req.url.includes('/purchase')) {
     try {
       const { id } = req.query;
-      const { tierId, buyerAddress, signature, tokenType } = req.body;
+      const { tierId, buyerAddress, signature, message, tokenType } = req.body;
 
-      if (!id || !tierId || !buyerAddress || !signature) {
+      if (!id || tierId === undefined || !buyerAddress || !signature || !message) {
         return res.status(400).json({ 
-          error: 'Missing required fields: eventId, tierId, buyerAddress, signature' 
+          error: 'Missing required fields: tierId, buyerAddress, signature, message' 
         });
+      }
+
+      // Verify the signature
+      try {
+        const signerAddress = ethers.utils.verifyMessage(message, signature);
+        if (signerAddress.toLowerCase() !== buyerAddress.toLowerCase()) {
+          return res.status(401).json({ error: 'Invalid signature' });
+        }
+      } catch (error) {
+        return res.status(401).json({ error: 'Signature verification failed' });
       }
 
       const event = mockEvents[parseInt(id)];
@@ -144,7 +154,7 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Event not found' });
       }
 
-      const tier = event.tiers[tierId];
+      const tier = event.tiers[parseInt(tierId)];
       if (!tier) {
         return res.status(404).json({ error: 'Tier not found' });
       }
@@ -156,7 +166,7 @@ export default async function handler(req, res) {
       // Generate metadata URI for the ticket
       const ticketMetadata = {
         eventId: id,
-        tierId: tierId,
+        tierId: parseInt(tierId),
         buyer: buyerAddress,
         purchaseTime: Math.floor(Date.now() / 1000),
         qrData: `${id}-${tierId}-${buyerAddress}-${Date.now()}`
@@ -168,7 +178,7 @@ export default async function handler(req, res) {
         success: true,
         purchaseDetails: {
           eventId: id,
-          tierId: tierId,
+          tierId: parseInt(tierId),
           price: tier.price,
           tokenType: tier.tokenType,
           metadataURI: metadataURI,
