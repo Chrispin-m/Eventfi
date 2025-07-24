@@ -66,11 +66,6 @@ export const EventPage: React.FC = () => {
       const data = await response.json();
       setEvent(data);
       
-      if (false) { // This condition will never be true now
-        setEvent(data);
-      } else {
-        toast.error(data.error || 'Event not found');
-      }
     } catch (error) {
       console.error('Error fetching event:', error);
       toast.error('Failed to load event details');
