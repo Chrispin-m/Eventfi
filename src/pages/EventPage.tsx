@@ -91,6 +91,7 @@ export const EventPage: React.FC = () => {
       return;
     }
 
+    console.log('Purchasing tier:', tier);
     setSelectedTier(tier);
     setShowPurchaseModal(true);
   };
