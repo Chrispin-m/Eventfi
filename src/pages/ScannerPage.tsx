@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { Camera, Upload, CheckCircle, XCircle, Scan, StopCircle, Key, Users } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Camera, Upload, CheckCircle, XCircle, Scan, StopCircle, Key, Users, AlertTriangle } from 'lucide-react';
 import { useWeb3 } from '../context/Web3Context';
 import { toast } from 'react-toastify';
 import QrScanner from 'qr-scanner';
@@ -17,54 +17,160 @@ export const ScannerPage: React.FC = () => {
   const { account, isConnected } = useWeb3();
   const [isScanning, setIsScanning] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cameraPermission, setCameraPermission] = useState<'granted' | 'denied' | 'prompt' | 'checking'>('checking');
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
   const [manualInput, setManualInput] = useState('');
   const [staffMode, setStaffMode] = useState(false);
   const [staffCode, setStaffCode] = useState('');
   const [eventId, setEventId] = useState('');
+  const [availableCameras, setAvailableCameras] = useState<QrScanner.Camera[]>([]);
+  const [selectedCamera, setSelectedCamera] = useState<string>('environment');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const qrScannerRef = useRef<QrScanner | null>(null);
 
-  const startCameraScanning = async () => {
-    if (!videoRef.current) return;
+  // Check camera permissions and available cameras on component mount
+  useEffect(() => {
+    checkCameraPermissions();
+    listAvailableCameras();
+    
+    return () => {
+      stopCameraScanning();
+    };
+  }, []);
 
+  const checkCameraPermissions = async () => {
     try {
-      setIsCameraActive(true);
+      setCameraPermission('checking');
       
-      // Check if QR scanner is supported
+      // Check if camera is supported
       const hasCamera = await QrScanner.hasCamera();
       if (!hasCamera) {
+        setCameraPermission('denied');
         toast.error('No camera found on this device');
-        setIsCameraActive(false);
         return;
       }
 
-      // Create QR scanner instance
+      // Check current permission status
+      if (navigator.permissions) {
+        const permission = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        setCameraPermission(permission.state as 'granted' | 'denied' | 'prompt');
+        
+        // Listen for permission changes
+        permission.onchange = () => {
+          setCameraPermission(permission.state as 'granted' | 'denied' | 'prompt');
+        };
+      } else {
+        // Fallback for browsers without permissions API
+        setCameraPermission('prompt');
+      }
+    } catch (error) {
+      console.error('Error checking camera permissions:', error);
+      setCameraPermission('prompt');
+    }
+  };
+
+  const listAvailableCameras = async () => {
+    try {
+      const cameras = await QrScanner.listCameras(true);
+      setAvailableCameras(cameras);
+      console.log('Available cameras:', cameras);
+    } catch (error) {
+      console.error('Error listing cameras:', error);
+    }
+  };
+
+  const requestCameraPermission = async () => {
+    try {
+      setCameraPermission('checking');
+      
+      // Request camera access
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: selectedCamera === 'environment' ? 'environment' : 'user'
+        } 
+      });
+      
+      // Stop the stream immediately - we just needed it for permission
+      stream.getTracks().forEach(track => track.stop());
+      
+      setCameraPermission('granted');
+      toast.success('Camera permission granted!');
+      
+      // Refresh available cameras list
+      await listAvailableCameras();
+      
+    } catch (error) {
+      console.error('Camera permission denied:', error);
+      setCameraPermission('denied');
+      toast.error('Camera permission denied. Please enable camera access in your browser settings.');
+    }
+  };
+
+  const startCameraScanning = async () => {
+    if (!videoRef.current) {
+      toast.error('Video element not ready');
+      return;
+    }
+
+    if (cameraPermission !== 'granted') {
+      await requestCameraPermission();
+      if (cameraPermission !== 'granted') return;
+    }
+
+    try {
+      setIsCameraActive(true);
+      toast.info('Starting camera...');
+      
+      // Create QR scanner instance with enhanced options
       qrScannerRef.current = new QrScanner(
         videoRef.current,
         (result) => {
           console.log('QR Code detected:', result.data);
+          toast.success('QR Code detected!');
           verifyTicket(result.data);
-          stopCameraScanning();
+          // Don't stop camera automatically - let user decide
         },
         {
           onDecodeError: (error) => {
             // Silently handle decode errors - they're normal when no QR code is visible
-            console.log('Decode error (normal):', error);
+            console.log('Decode error (normal):', error.message);
           },
           highlightScanRegion: true,
           highlightCodeOutline: true,
-          preferredCamera: 'environment', // Use back camera on mobile
+          preferredCamera: selectedCamera,
+          maxScansPerSecond: 5, // Limit scan rate for better performance
+          calculateScanRegion: (video) => {
+            // Create a centered square scan region
+            const smallerDimension = Math.min(video.videoWidth, video.videoHeight);
+            const scanSize = Math.floor(smallerDimension * 0.6);
+            return {
+              x: Math.floor((video.videoWidth - scanSize) / 2),
+              y: Math.floor((video.videoHeight - scanSize) / 2),
+              width: scanSize,
+              height: scanSize,
+            };
+          },
         }
       );
 
       await qrScannerRef.current.start();
       toast.success('Camera started - point at QR code to scan');
+      
     } catch (error) {
       console.error('Error starting camera:', error);
-      toast.error('Failed to start camera. Please check permissions.');
       setIsCameraActive(false);
+      
+      if (error.name === 'NotAllowedError') {
+        setCameraPermission('denied');
+        toast.error('Camera permission denied. Please enable camera access and try again.');
+      } else if (error.name === 'NotFoundError') {
+        toast.error('No camera found on this device.');
+      } else if (error.name === 'NotReadableError') {
+        toast.error('Camera is already in use by another application.');
+      } else {
+        toast.error('Failed to start camera. Please check your camera settings.');
+      }
     }
   };
 
@@ -75,29 +181,56 @@ export const ScannerPage: React.FC = () => {
       qrScannerRef.current = null;
     }
     setIsCameraActive(false);
+    toast.info('Camera stopped');
   };
 
-  // Cleanup on component unmount
-  React.useEffect(() => {
-    return () => {
+  const switchCamera = async () => {
+    if (availableCameras.length <= 1) {
+      toast.info('Only one camera available');
+      return;
+    }
+
+    const wasActive = isCameraActive;
+    if (wasActive) {
       stopCameraScanning();
-    };
-  }, []);
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    }
+
+    // Toggle between environment and user cameras
+    const newCamera = selectedCamera === 'environment' ? 'user' : 'environment';
+    setSelectedCamera(newCamera);
+    
+    if (wasActive) {
+      // Small delay to ensure camera is properly released
+      setTimeout(() => {
+        startCameraScanning();
+      }, 500);
+    }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Use QR scanner to read from uploaded file
-    QrScanner.scanImage(file, { returnDetailedScanResult: true })
-      .then(result => {
-        console.log('QR Code from file:', result.data);
-        verifyTicket(result.data);
-        toast.success('QR code read from image successfully');
-      })
-      .catch(error => {
-        console.error('Error reading QR code from file:', error);
-        toast.error('Could not read QR code from image. Please try again.');
+    try {
+      toast.info('Reading QR code from image...');
+      
+      const result = await QrScanner.scanImage(file, { 
+        returnDetailedScanResult: true 
       });
+      
+      console.log('QR Code from file:', result.data);
+      verifyTicket(result.data);
+      toast.success('QR code read from image successfully');
+      
+    } catch (error) {
+      console.error('Error reading QR code from file:', error);
+      toast.error('Could not read QR code from image. Please ensure the image contains a clear QR code.');
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleManualVerification = () => {
@@ -119,6 +252,7 @@ export const ScannerPage: React.FC = () => {
       toast.error('Please enter staff code and event ID');
       return;
     }
+
     setIsScanning(true);
     setVerificationResult(null);
 
@@ -147,9 +281,9 @@ export const ScannerPage: React.FC = () => {
         setVerificationResult(result);
         
         if (result.valid) {
-          toast.success('Valid ticket verified!');
+          toast.success('✅ Valid ticket verified!');
         } else {
-          toast.error(`Invalid ticket: ${result.reason}`);
+          toast.error(`❌ Invalid ticket: ${result.reason}`);
         }
       } else {
         throw new Error(result.error || 'Verification failed');
@@ -169,7 +303,6 @@ export const ScannerPage: React.FC = () => {
     }
 
     try {
-      // In a real implementation, this would call the smart contract
       toast.info('Marking ticket as used - this would execute a blockchain transaction');
       
       // Simulate successful marking
@@ -180,6 +313,32 @@ export const ScannerPage: React.FC = () => {
     } catch (error) {
       console.error('Error marking ticket as used:', error);
       toast.error('Failed to mark ticket as used');
+    }
+  };
+
+  const getCameraStatusIcon = () => {
+    switch (cameraPermission) {
+      case 'granted':
+        return <CheckCircle className="w-5 h-5 text-green-600" />;
+      case 'denied':
+        return <XCircle className="w-5 h-5 text-red-600" />;
+      case 'checking':
+        return <Scan className="w-5 h-5 text-blue-600 animate-spin" />;
+      default:
+        return <AlertTriangle className="w-5 h-5 text-yellow-600" />;
+    }
+  };
+
+  const getCameraStatusText = () => {
+    switch (cameraPermission) {
+      case 'granted':
+        return 'Camera Access Granted';
+      case 'denied':
+        return 'Camera Access Denied';
+      case 'checking':
+        return 'Checking Camera...';
+      default:
+        return 'Camera Permission Required';
     }
   };
 
@@ -275,8 +434,113 @@ export const ScannerPage: React.FC = () => {
           {/* Continue with scanner if credentials provided */}
           {staffCode && eventId && (
             <>
-              {/* Scanner Interface - same as organizer mode */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Camera Permission Status */}
+              <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+                    <Camera className="w-5 h-5 text-green-600" />
+                    <span>Camera Status</span>
+                  </h2>
+                  <div className="flex items-center space-x-2">
+                    {getCameraStatusIcon()}
+                    <span className="text-sm font-medium">{getCameraStatusText()}</span>
+                  </div>
+                </div>
+
+                {cameraPermission === 'denied' && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                    <p className="text-red-800 text-sm">
+                      Camera access is required for live scanning. Please enable camera permissions in your browser settings and refresh the page.
+                    </p>
+                  </div>
+                )}
+
+                {cameraPermission === 'prompt' && (
+                  <button
+                    onClick={requestCameraPermission}
+                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Grant Camera Permission
+                  </button>
+                )}
+              </div>
+
+              {/* Live Camera Scanner */}
+              <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+                    <Camera className="w-5 h-5 text-green-600" />
+                    <span>Live Camera Scan</span>
+                  </h2>
+                  
+                  {availableCameras.length > 1 && (
+                    <button
+                      onClick={switchCamera}
+                      disabled={isCameraActive}
+                      className="text-sm bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+                    >
+                      Switch Camera
+                    </button>
+                  )}
+                </div>
+                
+                <div className="text-center">
+                  {!isCameraActive ? (
+                    <div className="bg-gray-100 rounded-lg p-8">
+                      <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <button
+                        onClick={startCameraScanning}
+                        disabled={cameraPermission !== 'granted'}
+                        className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {cameraPermission === 'granted' ? 'Start Camera' : 'Camera Permission Required'}
+                      </button>
+                      <p className="text-sm text-gray-500 mt-2">
+                        Point your camera at a QR code to scan
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <video
+                        ref={videoRef}
+                        className="w-full max-w-md mx-auto rounded-lg border-2 border-green-500"
+                        playsInline
+                        muted
+                        style={{ maxHeight: '400px' }}
+                      />
+                      <div className="absolute inset-0 pointer-events-none">
+                        <div className="absolute inset-4 border-2 border-green-500 rounded-lg opacity-50"></div>
+                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                          <div className="w-48 h-48 border-2 border-green-500 rounded-lg bg-green-500 bg-opacity-10"></div>
+                        </div>
+                      </div>
+                      <div className="mt-4 space-x-3">
+                        <button
+                          onClick={stopCameraScanning}
+                          className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                          <StopCircle className="w-4 h-4 inline mr-2" />
+                          Stop Camera
+                        </button>
+                        {availableCameras.length > 1 && (
+                          <button
+                            onClick={switchCamera}
+                            className="bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 transition-colors"
+                          >
+                            Switch Camera
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-sm text-green-600 mt-2 font-medium">
+                        📱 Point camera at QR code to scan automatically
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* File Upload and Manual Input sections remain the same */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                 {/* File Upload */}
                 <div className="bg-white rounded-lg shadow-md p-6">
                   <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
@@ -331,46 +595,9 @@ export const ScannerPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Live Camera */}
-              <div className="mt-8 bg-white rounded-lg shadow-md p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                  <Camera className="w-5 h-5 text-green-600" />
-                  <span>Live Camera Scan</span>
-                </h2>
-                
-                <div className="text-center">
-                  {!isCameraActive ? (
-                    <div className="bg-gray-100 rounded-lg p-8">
-                      <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <button
-                        onClick={startCameraScanning}
-                        className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors"
-                      >
-                        Start Camera
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <video
-                        ref={videoRef}
-                        className="w-full max-w-md mx-auto rounded-lg"
-                        playsInline
-                        muted
-                      />
-                      <button
-                        onClick={stopCameraScanning}
-                        className="mt-4 bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors"
-                      >
-                        Stop Camera
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
               {/* Verification Result */}
               {verificationResult && (
-                <div className="mt-8 bg-white rounded-lg shadow-md p-6">
+                <div className="bg-white rounded-lg shadow-md p-6">
                   <h2 className="text-lg font-semibold text-gray-900 mb-4">Verification Result</h2>
                   
                   <div className={`rounded-lg p-4 mb-4 ${
@@ -423,7 +650,7 @@ export const ScannerPage: React.FC = () => {
                       <div className="flex space-x-3">
                         <button
                           onClick={() => {
-                            toast.success('Entry approved - ticket holder may enter');
+                            toast.success('✅ Entry approved - ticket holder may enter');
                             setVerificationResult(null);
                           }}
                           className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors"
@@ -432,7 +659,7 @@ export const ScannerPage: React.FC = () => {
                         </button>
                         <button
                           onClick={() => {
-                            toast.warning('Entry denied by staff');
+                            toast.warning('❌ Entry denied by staff');
                             setVerificationResult(null);
                           }}
                           className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition-colors"
@@ -460,200 +687,272 @@ export const ScannerPage: React.FC = () => {
           <p className="text-gray-600">Verify and validate event tickets using QR codes</p>
         </div>
 
-        {/* Scanner Interface */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Scanning Methods */}
-          <div className="space-y-6">
-            {/* File Upload */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                <Upload className="w-5 h-5 text-blue-600" />
-                <span>Upload QR Code Image</span>
-              </h2>
-              
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 hover:bg-blue-50 transition-colors cursor-pointer"
-              >
-                <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 mb-2">Click to upload QR code image</p>
-                <p className="text-sm text-gray-500">Supports PNG, JPG, GIF</p>
-              </div>
-              
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-            </div>
-
-            {/* Manual Input */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Manual Verification</h2>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Ticket Data or ID
-                  </label>
-                  <textarea
-                    value={manualInput}
-                    onChange={(e) => setManualInput(e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Enter ticket QR data or ticket ID"
-                  />
-                </div>
-                
-                <button
-                  onClick={handleManualVerification}
-                  disabled={isScanning || !manualInput.trim()}
-                  className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isScanning ? 'Verifying...' : 'Verify Ticket'}
-                </button>
-              </div>
-            </div>
-
-            {/* Live Camera */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                <Camera className="w-5 h-5 text-blue-600" />
-                <span>Live Camera Scan</span>
-              </h2>
-              
-              <div className="text-center">
-                {!isCameraActive ? (
-                  <div className="bg-gray-100 rounded-lg p-8">
-                    <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <button
-                      onClick={startCameraScanning}
-                      className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Start Camera
-                    </button>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <video
-                      ref={videoRef}
-                      className="w-full max-w-md mx-auto rounded-lg"
-                      playsInline
-                      muted
-                    />
-                    <button
-                      onClick={stopCameraScanning}
-                      className="mt-4 bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors"
-                    >
-                      Stop Camera
-                    </button>
-                  </div>
-                )}
-              </div>
+        {/* Camera Permission Status */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+              <Camera className="w-5 h-5 text-blue-600" />
+              <span>Camera Status</span>
+            </h2>
+            <div className="flex items-center space-x-2">
+              {getCameraStatusIcon()}
+              <span className="text-sm font-medium">{getCameraStatusText()}</span>
             </div>
           </div>
 
-          {/* Verification Results */}
-          <div className="space-y-6">
-            {/* Scanner Status */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Scanner Status</h2>
+          {cameraPermission === 'denied' && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+              <p className="text-red-800 text-sm">
+                Camera access is required for live scanning. Please enable camera permissions in your browser settings and refresh the page.
+              </p>
+            </div>
+          )}
+
+          {cameraPermission === 'prompt' && (
+            <button
+              onClick={requestCameraPermission}
+              className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Grant Camera Permission
+            </button>
+          )}
+        </div>
+
+        {/* Live Camera Scanner */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+              <Camera className="w-5 h-5 text-blue-600" />
+              <span>Live Camera Scan</span>
+            </h2>
+            
+            {availableCameras.length > 1 && (
+              <button
+                onClick={switchCamera}
+                disabled={isCameraActive}
+                className="text-sm bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                Switch Camera ({selectedCamera === 'environment' ? 'Back' : 'Front'})
+              </button>
+            )}
+          </div>
+          
+          <div className="text-center">
+            {!isCameraActive ? (
+              <div className="bg-gray-100 rounded-lg p-8">
+                <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <button
+                  onClick={startCameraScanning}
+                  disabled={cameraPermission !== 'granted'}
+                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {cameraPermission === 'granted' ? 'Start Camera' : 'Camera Permission Required'}
+                </button>
+                <p className="text-sm text-gray-500 mt-2">
+                  Point your camera at a QR code to scan
+                </p>
+              </div>
+            ) : (
+              <div className="relative">
+                <video
+                  ref={videoRef}
+                  className="w-full max-w-md mx-auto rounded-lg border-2 border-blue-500"
+                  playsInline
+                  muted
+                  style={{ maxHeight: '400px' }}
+                />
+                <div className="absolute inset-0 pointer-events-none">
+                  <div className="absolute inset-4 border-2 border-blue-500 rounded-lg opacity-50"></div>
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                    <div className="w-48 h-48 border-2 border-blue-500 rounded-lg bg-blue-500 bg-opacity-10"></div>
+                  </div>
+                </div>
+                <div className="mt-4 space-x-3">
+                  <button
+                    onClick={stopCameraScanning}
+                    className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    <StopCircle className="w-4 h-4 inline mr-2" />
+                    Stop Camera
+                  </button>
+                  {availableCameras.length > 1 && (
+                    <button
+                      onClick={switchCamera}
+                      className="bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      Switch Camera
+                    </button>
+                  )}
+                </div>
+                <p className="text-sm text-blue-600 mt-2 font-medium">
+                  📱 Point camera at QR code to scan automatically
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Scanner Interface */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* File Upload */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <Upload className="w-5 h-5 text-blue-600" />
+              <span>Upload QR Code Image</span>
+            </h2>
+            
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 hover:bg-blue-50 transition-colors cursor-pointer"
+            >
+              <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 mb-2">Click to upload QR code image</p>
+              <p className="text-sm text-gray-500">Supports PNG, JPG, GIF</p>
+            </div>
+            
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+          </div>
+
+          {/* Manual Input */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Manual Verification</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Ticket Data or ID
+                </label>
+                <textarea
+                  value={manualInput}
+                  onChange={(e) => setManualInput(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter ticket QR data or ticket ID"
+                />
+              </div>
               
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Scanner:</span>
-                  <span className="text-green-600 font-medium">Ready</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Network:</span>
-                  <span className="text-blue-600 font-medium">CrossFi Testnet</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Organizer:</span>
-                  <span className="font-mono text-xs">
-                    {account?.slice(0, 6)}...{account?.slice(-4)}
-                  </span>
-                </div>
+              <button
+                onClick={handleManualVerification}
+                disabled={isScanning || !manualInput.trim()}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isScanning ? 'Verifying...' : 'Verify Ticket'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Scanner Status */}
+        <div className="mt-8 bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Scanner Status</h2>
+          
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">Scanner:</span>
+              <span className="text-green-600 font-medium">Ready</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">Network:</span>
+              <span className="text-blue-600 font-medium">CrossFi Testnet</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">Organizer:</span>
+              <span className="font-mono text-xs">
+                {account?.slice(0, 6)}...{account?.slice(-4)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">Available Cameras:</span>
+              <span className="text-sm">{availableCameras.length}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Verification Result */}
+        {verificationResult && (
+          <div className="mt-8 bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Verification Result</h2>
+            
+            <div className={`rounded-lg p-4 mb-4 ${
+              verificationResult.valid 
+                ? 'bg-green-50 border border-green-200' 
+                : 'bg-red-50 border border-red-200'
+            }`}>
+              <div className="flex items-center space-x-2 mb-2">
+                {verificationResult.valid ? (
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                ) : (
+                  <XCircle className="w-5 h-5 text-red-600" />
+                )}
+                <span className={`font-medium ${
+                  verificationResult.valid ? 'text-green-800' : 'text-red-800'
+                }`}>
+                  {verificationResult.valid ? '✅ Valid Ticket' : '❌ Invalid Ticket'}
+                </span>
+              </div>
+              <p className={`text-sm ${
+                verificationResult.valid ? 'text-green-700' : 'text-red-700'
+              }`}>
+                {verificationResult.reason}
+              </p>
+            </div>
+
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Ticket ID:</span>
+                <span className="font-mono">{verificationResult.ticketId}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Verified At:</span>
+                <span>{new Date(verificationResult.timestamp).toLocaleString()}</span>
               </div>
             </div>
 
-            {/* Verification Result */}
-            {verificationResult && (
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Verification Result</h2>
-                
-                <div className={`rounded-lg p-4 mb-4 ${
-                  verificationResult.valid 
-                    ? 'bg-green-50 border border-green-200' 
-                    : 'bg-red-50 border border-red-200'
-                }`}>
-                  <div className="flex items-center space-x-2 mb-2">
-                    {verificationResult.valid ? (
-                      <CheckCircle className="w-5 h-5 text-green-600" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-red-600" />
-                    )}
-                    <span className={`font-medium ${
-                      verificationResult.valid ? 'text-green-800' : 'text-red-800'
-                    }`}>
-                      {verificationResult.valid ? 'Valid Ticket' : 'Invalid Ticket'}
-                    </span>
-                  </div>
-                  <p className={`text-sm ${
-                    verificationResult.valid ? 'text-green-700' : 'text-red-700'
-                  }`}>
-                    {verificationResult.reason}
-                  </p>
-                </div>
-
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Ticket ID:</span>
-                    <span className="font-mono">{verificationResult.ticketId}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Verified At:</span>
-                    <span>{new Date(verificationResult.timestamp).toLocaleString()}</span>
-                  </div>
-                </div>
-
-                {verificationResult.valid && (
-                  <button
-                    onClick={() => markTicketAsUsed(verificationResult.ticketId)}
-                    className="w-full mt-4 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors"
-                  >
-                    Mark as Used (Entry)
-                  </button>
-                )}
-              </div>
+            {verificationResult.valid && (
+              <button
+                onClick={() => markTicketAsUsed(verificationResult.ticketId)}
+                className="w-full mt-4 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors"
+              >
+                Mark as Used (Entry)
+              </button>
             )}
+          </div>
+        )}
 
-            {/* Instructions */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">How to Use</h2>
-              
-              <div className="space-y-3 text-sm text-gray-600">
-                <div className="flex items-start space-x-2">
-                  <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">
-                    1
-                  </div>
-                  <p>Upload a QR code image or enter ticket data manually</p>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">
-                    2
-                  </div>
-                  <p>The system will verify the ticket against the blockchain</p>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">
-                    3
-                  </div>
-                  <p>For valid tickets, click "Mark as Used" to allow entry</p>
-                </div>
+        {/* Instructions */}
+        <div className="mt-8 bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">How to Use</h2>
+          
+          <div className="space-y-3 text-sm text-gray-600">
+            <div className="flex items-start space-x-2">
+              <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">
+                1
               </div>
+              <p><strong>Live Camera:</strong> Click "Start Camera" and point at QR codes for instant scanning</p>
+            </div>
+            <div className="flex items-start space-x-2">
+              <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">
+                2
+              </div>
+              <p><strong>Upload Image:</strong> Upload a QR code image or enter ticket data manually</p>
+            </div>
+            <div className="flex items-start space-x-2">
+              <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">
+                3
+              </div>
+              <p><strong>Verification:</strong> The system will verify the ticket against the blockchain</p>
+            </div>
+            <div className="flex items-start space-x-2">
+              <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">
+                4
+              </div>
+              <p><strong>Entry:</strong> For valid tickets, click "Mark as Used" to allow entry</p>
             </div>
           </div>
         </div>
