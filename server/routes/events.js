@@ -193,10 +193,21 @@ router.post('/:eventId/purchase', asyncHandler(async (req, res) => {
   const eventId = req.params.eventId;
   const { tierId, buyerAddress, signature, message, tokenType } = req.body;
 
-  if (!tierId || !buyerAddress || !signature || !message) {
+  if (tierId === undefined || !buyerAddress || !signature || !message) {
     return res.status(400).json({ 
-      error: 'Missing required fields: tierId, buyerAddress, signature, message' 
+      error: 'Missing required fields: tierId, buyerAddress, signature, message'
     });
+  }
+
+  // Verify the signature
+  try {
+    const signerAddress = ethers.utils.verifyMessage(message, signature);
+    if (signerAddress.toLowerCase() !== buyerAddress.toLowerCase()) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+  } catch (error) {
+    console.error('Signature verification error:', error);
+    return res.status(401).json({ error: 'Signature verification failed' });
   }
 
   const contract = getEventManagerContract();
@@ -209,15 +220,8 @@ router.post('/:eventId/purchase', asyncHandler(async (req, res) => {
   }
 
   try {
-    // Verify the buyer's signature (simplified for MVP)
-    const signerAddress = ethers.utils.verifyMessage(message, signature);
-    
-    if (signerAddress.toLowerCase() !== buyerAddress.toLowerCase()) {
-      return res.status(401).json({ error: 'Invalid signature' });
-    }
-
     // Get ticket tier details
-    const tierData = await contract.getTicketTier(eventId, tierId);
+    const tierData = await contract.getTicketTier(eventId, parseInt(tierId));
     const price = tierData[1];
     const available = parseInt(tierData[2].toString()) - parseInt(tierData[3].toString());
 
@@ -228,7 +232,7 @@ router.post('/:eventId/purchase', asyncHandler(async (req, res) => {
     // Generate metadata URI for the ticket (QR code will include this info)
     const ticketMetadata = {
       eventId: eventId,
-      tierId: tierId,
+      tierId: parseInt(tierId),
       buyer: buyerAddress,
       purchaseTime: Math.floor(Date.now() / 1000),
       qrData: `${eventId}-${tierId}-${buyerAddress}-${Date.now()}`
@@ -241,7 +245,7 @@ router.post('/:eventId/purchase', asyncHandler(async (req, res) => {
       success: true,
       purchaseDetails: {
         eventId: eventId,
-        tierId: tierId,
+        tierId: parseInt(tierId),
         price: ethers.utils.formatEther(price),
         tokenType: ['XFI', 'XUSD', 'MPX'][parseInt(tierData[4].toString())],
         metadataURI: metadataURI,
