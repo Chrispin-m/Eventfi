@@ -42,7 +42,7 @@ const CROSSFI_CHAIN_CONFIG = {
   blockExplorerUrls: ['https://scan.testnet.ms'],
 };
 
-const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WC_PROJECT_ID;
+const WALLETCONNECT_PROJECT_ID = "bd8322da1682ec5afc8ecdb3ce24c57d";
 
 export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [account, setAccount] = useState<string | null>(null);
