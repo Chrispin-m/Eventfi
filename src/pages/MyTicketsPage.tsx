@@ -12,13 +12,17 @@ interface UserTicket {
   eventStartDate: number;
   eventEndDate: number;
   tierName: string;
-  price: string;
+  pricePerPerson: string;
+  attendeeCount: number;
+  totalAmountPaid: string;
   tokenType: string;
   purchaseTime: number;
   used: boolean;
   valid: boolean;
   qrCode: string;
   status: 'upcoming' | 'live' | 'ended';
+  purchaser: string;
+  blockchainVerified?: boolean;
 }
 
 export const MyTicketsPage: React.FC = () => {
@@ -73,7 +77,7 @@ export const MyTicketsPage: React.FC = () => {
       let qrCodeUrl = ticket.qrCode;
       
       if (!qrCodeUrl) {
-        const response = await fetch(`/api/tickets/generate-qr/${ticket.id}?eventId=${ticket.eventId}`);
+        const response = await fetch(`/api/tickets/generate-qr/${ticket.id}?eventId=${ticket.eventId}&attendeeCount=${ticket.attendeeCount}`);
         const data = await response.json();
         qrCodeUrl = data.qrCode;
       }
@@ -84,18 +88,18 @@ export const MyTicketsPage: React.FC = () => {
       if (!ctx) return;
 
       canvas.width = 800;
-      canvas.height = 1000;
+      canvas.height = 1100;
 
       // Background gradient
       const gradient = ctx.createLinearGradient(0, 0, 800, 1000);
       gradient.addColorStop(0, '#3B82F6');
       gradient.addColorStop(1, '#8B5CF6');
       ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 800, 1000);
+      ctx.fillRect(0, 0, 800, 1100);
 
       // White ticket area
       ctx.fillStyle = 'white';
-      ctx.fillRect(50, 100, 700, 800);
+      ctx.fillRect(50, 100, 700, 900);
 
       // Header
       ctx.fillStyle = '#1F2937';
@@ -113,33 +117,36 @@ export const MyTicketsPage: React.FC = () => {
       ctx.fillText(ticket.eventLocation, 400, 290);
       ctx.fillText(new Date(ticket.eventStartDate * 1000).toLocaleDateString(), 400, 320);
 
-      // Ticket ID
+      // Ticket details
       ctx.font = '16px Arial';
       ctx.fillText(`Ticket #${ticket.id}`, 400, 360);
+      ctx.fillText(`Valid for ${ticket.attendeeCount} attendee${ticket.attendeeCount > 1 ? 's' : ''}`, 400, 380);
+      ctx.fillText(`Total Paid: ${ticket.totalAmountPaid} ${ticket.tokenType}`, 400, 400);
 
       // QR Code
       if (qrCodeUrl) {
         const qrImg = new Image();
         qrImg.onload = () => {
-          ctx.drawImage(qrImg, 275, 400, 250, 250);
+          ctx.drawImage(qrImg, 275, 430, 250, 250);
           
           // Instructions
           ctx.font = '14px Arial';
           ctx.fillStyle = '#374151';
-          ctx.fillText('Present this QR code at event entrance', 400, 680);
+          ctx.fillText('Present this QR code at event entrance', 400, 710);
+          ctx.fillText(`Multi-person ticket for ${ticket.attendeeCount} attendee${ticket.attendeeCount > 1 ? 's' : ''}`, 400, 730);
           
           // Footer
           ctx.font = '12px Arial';
           ctx.fillStyle = '#9CA3AF';
-          ctx.fillText('Powered by CrossFi Chain', 400, 850);
-          ctx.fillText(`Downloaded: ${new Date().toLocaleDateString()}`, 400, 870);
+          ctx.fillText('Powered by CrossFi Chain - Blockchain Verified', 400, 880);
+          ctx.fillText(`Downloaded: ${new Date().toLocaleDateString()}`, 400, 900);
 
           // Download the image
           canvas.toBlob((blob) => {
             if (blob) {
               const url = URL.createObjectURL(blob);
               const link = document.createElement('a');
-              link.download = `crossfi-ticket-${ticket.id}.png`;
+              link.download = `crossfi-ticket-${ticket.id}-${ticket.attendeeCount}pax.png`;
               link.href = url;
               link.click();
               URL.revokeObjectURL(url);
@@ -305,12 +312,22 @@ export const MyTicketsPage: React.FC = () => {
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">Price:</span>
                       <div className="flex items-center space-x-1">
-                        <span className="font-medium">{ticket.price}</span>
+                        <span className="font-medium">{ticket.totalAmountPaid}</span>
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTokenColor(ticket.tokenType)}`}>
                           {ticket.tokenType}
                         </span>
                       </div>
                     </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Attendees:</span>
+                      <span className="font-medium">{ticket.attendeeCount} person{ticket.attendeeCount > 1 ? 's' : ''}</span>
+                    </div>
+                    {ticket.attendeeCount > 1 && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Per person:</span>
+                        <span className="text-gray-500">{ticket.pricePerPerson} {ticket.tokenType}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* QR Code Preview */}
@@ -336,6 +353,11 @@ export const MyTicketsPage: React.FC = () => {
                       {ticket.valid && !ticket.used && (
                         <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
                           Valid
+                        </span>
+                      )}
+                      {ticket.blockchainVerified && (
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                          Blockchain ✓
                         </span>
                       )}
                     </div>
@@ -391,6 +413,10 @@ export const MyTicketsPage: React.FC = () => {
             <div>
               <p className="text-sm text-gray-600">Network</p>
               <p className="text-sm">CrossFi Testnet</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Verification</p>
+              <p className="text-sm text-green-600">✓ Blockchain Verified Tickets</p>
             </div>
           </div>
         </div>

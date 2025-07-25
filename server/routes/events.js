@@ -45,7 +45,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
         tiers.push({
           id: i,
           name: tierData[0],
-          price: ethers.utils.formatEther(tierData[1]),
+          price: ethers.utils.formatEther(tierData[1]), // Keep for backward compatibility
+          pricePerPerson: ethers.utils.formatEther(tierData[1]),
           maxSupply: parseInt(tierData[2].toString()),
           currentSupply: parseInt(tierData[3].toString()),
           tokenType: ['XFI', 'XUSD', 'MPX'][parseInt(tierData[4].toString())],
@@ -191,11 +192,17 @@ router.get('/', asyncHandler(async (req, res) => {
  */
 router.post('/:eventId/purchase', asyncHandler(async (req, res) => {
   const eventId = req.params.eventId;
-  const { tierId, buyerAddress, signature, message, tokenType } = req.body;
+  const { tierId, attendeeCount = 1, buyerAddress, signature, message, tokenType } = req.body;
 
-  if (tierId === undefined || !buyerAddress || !signature || !message) {
+  if (tierId === undefined || !attendeeCount || !buyerAddress || !signature || !message) {
     return res.status(400).json({ 
-      error: 'Missing required fields: tierId, buyerAddress, signature, message'
+      error: 'Missing required fields: tierId, attendeeCount, buyerAddress, signature, message'
+    });
+  }
+
+  if (attendeeCount < 1 || attendeeCount > 10) {
+    return res.status(400).json({ 
+      error: 'Attendee count must be between 1 and 10'
     });
   }
 
@@ -222,20 +229,27 @@ router.post('/:eventId/purchase', asyncHandler(async (req, res) => {
   try {
     // Get ticket tier details
     const tierData = await contract.getTicketTier(eventId, parseInt(tierId));
-    const price = tierData[1];
-    const available = parseInt(tierData[2].toString()) - parseInt(tierData[3].toString());
+    const pricePerPerson = tierData[1];
+    const maxSupply = parseInt(tierData[2].toString());
+    const currentSupply = parseInt(tierData[3].toString());
+    const available = maxSupply - currentSupply;
 
-    if (available <= 0) {
+    if (available < attendeeCount) {
       return res.status(400).json({ error: 'Tickets sold out for this tier' });
     }
+
+    const totalPrice = pricePerPerson.mul(attendeeCount);
 
     // Generate metadata URI for the ticket (QR code will include this info)
     const ticketMetadata = {
       eventId: eventId,
       tierId: parseInt(tierId),
+      attendeeCount: parseInt(attendeeCount),
       buyer: buyerAddress,
       purchaseTime: Math.floor(Date.now() / 1000),
-      qrData: `${eventId}-${tierId}-${buyerAddress}-${Date.now()}`
+      totalPrice: ethers.utils.formatEther(totalPrice),
+      pricePerPerson: ethers.utils.formatEther(pricePerPerson),
+      qrData: `${eventId}-${tierId}-${attendeeCount}-${buyerAddress}-${Date.now()}`
     };
 
     const metadataURI = `data:application/json;base64,${Buffer.from(JSON.stringify(ticketMetadata)).toString('base64')}`;
@@ -246,11 +260,13 @@ router.post('/:eventId/purchase', asyncHandler(async (req, res) => {
       purchaseDetails: {
         eventId: eventId,
         tierId: parseInt(tierId),
-        price: ethers.utils.formatEther(price),
+        attendeeCount: parseInt(attendeeCount),
+        pricePerPerson: ethers.utils.formatEther(pricePerPerson),
+        totalPrice: ethers.utils.formatEther(totalPrice),
         tokenType: ['XFI', 'XUSD', 'MPX'][parseInt(tierData[4].toString())],
         metadataURI: metadataURI,
         qrCode: ticketMetadata.qrData,
-        message: 'Ready to purchase - confirm transaction in your wallet'
+        message: `Ready to purchase ticket for ${attendeeCount} attendee${attendeeCount > 1 ? 's' : ''} - confirm transaction in your wallet`
       }
     });
 

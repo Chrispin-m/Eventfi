@@ -13,6 +13,7 @@ interface TicketTier {
   id: number;
   name: string;
   price: string;
+  pricePerPerson?: string;
   tokenType: string;
 }
 
@@ -32,7 +33,11 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [purchaseStep, setPurchaseStep] = useState<'confirm' | 'processing' | 'success' | 'error'>('confirm');
   const [transactionHash, setTransactionHash] = useState<string>('');
+  const [attendeeCount, setAttendeeCount] = useState(1);
   const { account, signer } = useWeb3();
+
+  const pricePerPerson = tier.pricePerPerson || tier.price;
+  const totalPrice = (parseFloat(pricePerPerson) * attendeeCount).toFixed(3);
 
   const handlePurchase = async () => {
     if (!account || !signer) {
@@ -45,7 +50,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
 
     try {
       // Step 1: Sign purchase message
-      const message = `Purchase ticket for event ${event.id}, tier ${tier.id}, buyer ${account}, timestamp ${Date.now()}`;
+      const message = `Purchase ticket for event ${event.id}, tier ${tier.id}, attendees ${attendeeCount}, buyer ${account}, timestamp ${Date.now()}`;
       toast.info('Please sign the message in your wallet...');
       const signature = await signer.signMessage(message);
       
@@ -55,6 +60,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tierId: tier.id,
+          attendeeCount: attendeeCount,
           buyerAddress: account,
           signature: signature,
           message: message,
@@ -75,7 +81,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
       }
 
       const contractABI = [
-        'function buyTicket(uint256 eventId, uint256 tierId, string memory ticketMetadataURI) payable returns (uint256)'
+        'function buyTicket(uint256 eventId, uint256 tierId, uint256 attendeeCount, string memory ticketMetadataURI) payable returns (uint256)'
       ];
 
       const contract = new ethers.Contract(contractAddress, contractABI, signer);
@@ -86,23 +92,26 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
         tierId: tier.id,
         eventTitle: event.title,
         tierName: tier.name,
+        attendeeCount: attendeeCount,
         buyer: account,
         purchaseTime: Math.floor(Date.now() / 1000),
-        price: tier.price,
+        pricePerPerson: pricePerPerson,
+        totalPrice: totalPrice,
         tokenType: tier.tokenType
       };
       
       const metadataURI = `data:application/json;base64,${Buffer.from(JSON.stringify(ticketMetadata)).toString('base64')}`;
       
       // Execute purchase transaction
-      const price = ethers.utils.parseEther(tier.price);
+      const totalPriceWei = ethers.utils.parseEther(totalPrice);
       toast.info('Confirm the purchase transaction in your wallet...');
       const tx = await contract.buyTicket(
         event.id,
         tier.id,
+        attendeeCount,
         metadataURI,
         {
-          value: tier.tokenType === 'XFI' ? price : 0,
+          value: tier.tokenType === 'XFI' ? totalPriceWei : 0,
           gasLimit: 1000000
         }
       );
@@ -158,14 +167,43 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
                   <span className="text-gray-600">Tier:</span>
                   <span className="font-medium">{tier.name}</span>
                 </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Attendees:</span>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setAttendeeCount(Math.max(1, attendeeCount - 1))}
+                      className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
+                    >
+                      -
+                    </button>
+                    <span className="font-medium w-8 text-center">{attendeeCount}</span>
+                    <button
+                      onClick={() => setAttendeeCount(Math.min(10, attendeeCount + 1))}
+                      className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Price:</span>
-                  <span className="font-medium">{tier.price} {tier.tokenType}</span>
+                  <span className="text-gray-600">Price per person:</span>
+                  <span className="font-medium">{pricePerPerson} {tier.tokenType}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2">
+                  <span className="text-gray-900 font-semibold">Total Price:</span>
+                  <span className="font-bold text-lg">{totalPrice} {tier.tokenType}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Buyer:</span>
                   <span className="font-mono text-sm">{account?.slice(0, 6)}...{account?.slice(-4)}</span>
                 </div>
+              </div>
+              
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-blue-800 text-sm">
+                  <strong>Multi-Person Ticket:</strong> This ticket is valid for {attendeeCount} attendee{attendeeCount > 1 ? 's' : ''} 
+                  and can be used for group entry at the event.
+                </p>
               </div>
             </div>
 
@@ -201,7 +239,9 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
           <div className="text-center py-8">
             <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Purchase Successful!</h3>
-            <p className="text-gray-600 mb-4">Your ticket NFT has been minted successfully.</p>
+            <p className="text-gray-600 mb-4">
+              Your multi-person ticket NFT for {attendeeCount} attendee{attendeeCount > 1 ? 's' : ''} has been minted successfully.
+            </p>
             {transactionHash && (
               <div className="bg-gray-50 rounded-lg p-3 mb-4">
                 <p className="text-xs text-gray-500 mb-1">Transaction Hash:</p>

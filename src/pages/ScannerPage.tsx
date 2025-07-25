@@ -7,11 +7,24 @@ import Webcam from 'react-webcam';
 
 interface VerificationResult {
   ticketId: number;
+  eventId: number;
+  eventTitle: string;
+  eventLocation: string;
+  tierName: string;
+  attendeeCount: number;
+  totalAmountPaid: string;
+  pricePerPerson: string;
+  tokenType: string;
+  purchaseTimestamp: number;
+  purchaser: string;
+  eventStatusAtPurchase: string;
+  currentEventStatus: string;
   valid: boolean;
   reason: string;
   qrData: string;
   timestamp: string;
   staffVerified?: boolean;
+  blockchainVerified?: boolean;
 }
 
 const FullScreenScannerModal: React.FC<{
@@ -523,80 +536,161 @@ export const ScannerPage: React.FC = () => {
 
         {/* Verification Result */}
         {verificationResult && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Verification Result</h2>
-            
-            <div className={`rounded-lg p-4 mb-4 ${
-              verificationResult.valid 
-                ? 'bg-green-50 border border-green-200' 
-                : 'bg-red-50 border border-red-200'
-            }`}>
-              <div className="flex items-center space-x-2 mb-2">
-                {verificationResult.valid ? (
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                ) : (
-                  <XCircle className="w-5 h-5 text-red-600" />
-                )}
-                <span className={`font-medium ${
-                  verificationResult.valid ? 'text-green-800' : 'text-red-800'
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-semibold text-gray-900">Ticket Verification</h2>
+                  <button
+                    onClick={() => setVerificationResult(null)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Verification Status */}
+                <div className={`rounded-lg p-4 mb-6 ${
+                  verificationResult.valid 
+                    ? 'bg-green-50 border border-green-200' 
+                    : 'bg-red-50 border border-red-200'
                 }`}>
-                  {verificationResult.valid ? 'Valid Ticket' : 'Invalid Ticket'}
-                </span>
-                {verificationResult.staffVerified && (
-                  <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                    Staff Verified
-                  </span>
+                  <div className="flex items-center space-x-2 mb-2">
+                    {verificationResult.valid ? (
+                      <CheckCircle className="w-6 h-6 text-green-600" />
+                    ) : (
+                      <XCircle className="w-6 h-6 text-red-600" />
+                    )}
+                    <span className={`font-bold text-lg ${
+                      verificationResult.valid ? 'text-green-800' : 'text-red-800'
+                    }`}>
+                      {verificationResult.valid ? 'VALID TICKET' : 'INVALID TICKET'}
+                    </span>
+                    <div className="flex space-x-1">
+                      {verificationResult.staffVerified && (
+                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                          Staff ✓
+                        </span>
+                      )}
+                      {verificationResult.blockchainVerified && (
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                          Blockchain ✓
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <p className={`text-sm font-medium ${
+                    verificationResult.valid ? 'text-green-700' : 'text-red-700'
+                  }`}>
+                    {verificationResult.reason}
+                  </p>
+                </div>
+
+                {/* Ticket Details */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-gray-900 border-b pb-2">Event Information</h3>
+                    <div className="space-y-2 text-sm">
+                      <div>
+                        <span className="text-gray-600">Event:</span>
+                        <p className="font-medium">{verificationResult.eventTitle}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Location:</span>
+                        <p className="font-medium">{verificationResult.eventLocation}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Tier:</span>
+                        <p className="font-medium">{verificationResult.tierName}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Event Status:</span>
+                        <p className={`font-medium capitalize ${
+                          verificationResult.currentEventStatus === 'live' ? 'text-green-600' :
+                          verificationResult.currentEventStatus === 'upcoming' ? 'text-blue-600' :
+                          'text-gray-600'
+                        }`}>
+                          {verificationResult.currentEventStatus}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-gray-900 border-b pb-2">Ticket Details</h3>
+                    <div className="space-y-2 text-sm">
+                      <div>
+                        <span className="text-gray-600">Ticket ID:</span>
+                        <p className="font-mono font-medium">#{verificationResult.ticketId}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Attendees:</span>
+                        <p className="font-medium text-lg text-blue-600">
+                          {verificationResult.attendeeCount} person{verificationResult.attendeeCount > 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Total Paid:</span>
+                        <p className="font-medium">{verificationResult.totalAmountPaid} {verificationResult.tokenType}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Per Person:</span>
+                        <p className="font-medium">{verificationResult.pricePerPerson} {verificationResult.tokenType}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Purchase Date:</span>
+                        <p className="font-medium">{new Date(verificationResult.purchaseTimestamp * 1000).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Purchaser Information */}
+                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                  <h3 className="font-semibold text-gray-900 mb-2">Purchaser Information</h3>
+                  <div className="text-sm">
+                    <span className="text-gray-600">Wallet Address:</span>
+                    <p className="font-mono text-xs break-all">{verificationResult.purchaser}</p>
+                  </div>
+                </div>
+
+                {/* Entry Decision */}
+                {verificationResult.valid && (
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-blue-800 text-sm font-medium mb-3">
+                      Entry Decision for {verificationResult.attendeeCount} attendee{verificationResult.attendeeCount > 1 ? 's' : ''}:
+                    </p>
+                    <div className="flex space-x-3">
+                      <button
+                        onClick={() => {
+                          toast.success(`✅ Entry approved for ${verificationResult.attendeeCount} attendee${verificationResult.attendeeCount > 1 ? 's' : ''}`);
+                          setVerificationResult(null);
+                        }}
+                        className="flex-1 bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition-colors font-medium"
+                      >
+                        Allow Entry ({verificationResult.attendeeCount} pax)
+                      </button>
+                      <button
+                        onClick={() => {
+                          toast.warning('❌ Entry denied by staff');
+                          setVerificationResult(null);
+                        }}
+                        className="flex-1 bg-red-600 text-white py-3 px-4 rounded-lg hover:bg-red-700 transition-colors font-medium"
+                      >
+                        Deny Entry
+                      </button>
+                    </div>
+                  </div>
                 )}
-              </div>
-              <p className={`text-sm ${
-                verificationResult.valid ? 'text-green-700' : 'text-red-700'
-              }`}>
-                {verificationResult.reason}
-              </p>
-            </div>
 
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Ticket ID:</span>
-                <span className="font-mono">{verificationResult.ticketId}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Verified At:</span>
-                <span>{new Date(verificationResult.timestamp).toLocaleString()}</span>
-              </div>
-              {staffMode && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Event ID:</span>
-                  <span>{eventId}</span>
-                </div>
-              )}
-            </div>
-
-            {verificationResult.valid && (
-              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-blue-800 text-sm font-medium mb-2">Entry Decision:</p>
-                <div className="flex space-x-3">
-                  <button
-                    onClick={() => {
-                      toast.success('✅ Entry approved - ticket holder may enter');
-                      setVerificationResult(null);
-                    }}
-                    className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors"
-                  >
-                    Allow Entry
-                  </button>
-                  <button
-                    onClick={() => {
-                      toast.warning('❌ Entry denied by staff');
-                      setVerificationResult(null);
-                    }}
-                    className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition-colors"
-                  >
-                    Deny Entry
-                  </button>
+                {/* Verification Timestamp */}
+                <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500 text-center">
+                  Verified at: {new Date(verificationResult.timestamp).toLocaleString()}
+                  {staffMode && ` • Event ID: ${eventId}`}
                 </div>
               </div>
-            )}
+            </div>
           </div>
         )}
 

@@ -5,6 +5,7 @@ interface TicketTier {
   id: number;
   name: string;
   price: string;
+  pricePerPerson?: string;
   maxSupply: number;
   currentSupply: number;
   tokenType: string;
@@ -23,6 +24,8 @@ export const TicketTierCard: React.FC<TicketTierCardProps> = ({
   onPurchase, 
   disabled = false 
 }) => {
+  const displayPrice = tier.pricePerPerson || tier.price;
+  
   const getTokenColor = (tokenType: string) => {
     switch (tokenType) {
       case 'XFI': return 'text-blue-600 bg-blue-100';
@@ -56,8 +59,11 @@ export const TicketTierCard: React.FC<TicketTierCardProps> = ({
 
       <div className="mb-4">
         <div className="flex items-baseline space-x-1">
-          <span className="text-2xl font-bold text-gray-900">{tier.price}</span>
+          <span className="text-2xl font-bold text-gray-900">{displayPrice}</span>
           <span className="text-sm text-gray-500">{tier.tokenType}</span>
+          {tier.pricePerPerson && (
+            <span className="text-xs text-gray-400">per person</span>
+          )}
         </div>
       </div>
 

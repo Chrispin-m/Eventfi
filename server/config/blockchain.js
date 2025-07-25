@@ -51,14 +51,16 @@ export const wallet = process.env.PRIVATE_KEY
 // Contract ABI (simplified for key functions)
 export const EVENT_MANAGER_ABI = [
   "function createEvent(string memory title, string memory description, string memory location, uint256 startDate, uint256 endDate, string memory metadataURI, uint8 feeTokenType) payable returns (uint256)",
-  "function addTicketTier(uint256 eventId, string memory tierName, uint256 price, uint256 maxSupply, uint8 tokenType) external",
-  "function buyTicket(uint256 eventId, uint256 tierId, string memory ticketMetadataURI) payable returns (uint256)",
+  "function addTicketTier(uint256 eventId, string memory tierName, uint256 pricePerPerson, uint256 maxSupply, uint8 tokenType) external",
+  "function buyTicket(uint256 eventId, uint256 tierId, uint256 attendeeCount, string memory ticketMetadataURI) payable returns (uint256)",
   "function getEvent(uint256 eventId) view returns (uint256, address, string, string, string, uint256, uint256, string, bool, uint256)",
   "function getTicketTier(uint256 eventId, uint256 tierId) view returns (string, uint256, uint256, uint256, uint8, bool)",
+  "function getTicketInfo(uint256 ticketId) view returns (uint256, uint256, uint256, address, uint256, uint256, uint256, uint8, bool, uint8, uint8, bool, string)",
+  "function getUserTickets(address user) view returns (uint256[])",
   "function verifyTicket(uint256 ticketId) view returns (bool, string)",
   "function verifyAndUseTicket(uint256 ticketId) returns (bool)",
   "event EventCreated(uint256 indexed eventId, address indexed organizer, string title, uint256 startDate, uint256 endDate)",
-  "event TicketPurchased(uint256 indexed ticketId, uint256 indexed eventId, uint256 indexed tierId, address buyer, uint256 price, uint8 tokenType)",
+  "event TicketPurchased(uint256 indexed ticketId, uint256 indexed eventId, uint256 indexed tierId, address purchaser, uint256 attendeeCount, uint256 totalAmount, uint8 tokenType, uint256 timestamp)",
   "event TicketUsed(uint256 indexed ticketId, uint256 indexed eventId)"
 ];
 
