@@ -35,13 +35,18 @@ export const HeroSection: React.FC = () => {
                 <Ticket className="w-5 h-5" />
                 <span>Create Event</span>
               </Link>
-              <Link
-                to="/#events"
+              <button
+                onClick={() => {
+                  const eventsSection = document.getElementById('events-section');
+                  if (eventsSection) {
+                    eventsSection.scrollIntoView({ behavior: 'smooth' });
+                  }
+                }}
                 className="inline-flex items-center justify-center space-x-2 border-2 border-white text-white px-8 py-4 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-all duration-200"
               >
                 <Globe className="w-5 h-5" />
                 <span>Browse Events</span>
-              </Link>
+              </button>
             </div>
 
             {/* Features */}

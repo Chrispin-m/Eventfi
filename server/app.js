@@ -52,6 +52,11 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Debug route to test API
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'API is working', timestamp: new Date().toISOString() });
+});
+
 app.use('/api/events', eventRoutes);
 app.use('/api/organizer', organizerRoutes);
 app.use('/api/tickets', ticketRoutes);

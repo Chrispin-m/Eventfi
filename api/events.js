@@ -56,6 +56,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Content-Type', 'application/json');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -65,13 +66,15 @@ export default async function handler(req, res) {
     try {
       const { page = 1, limit = 10, organizer } = req.query;
       
+      console.log('Events API called with params:', { page, limit, organizer });
+      
       // For MVP, we'll return mock data since we don't have a deployed contract yet
       const mockEvents = [
         {
           id: 1,
-          organizer: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A',
-          title: 'CrossFi Developer Conference 2024',
-          description: 'Join us for the biggest blockchain developer conference of the year featuring CrossFi Chain innovations.',
+          organizer: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A', 
+          title: 'Celo Developer Conference 2024',
+          description: 'Join us for the biggest blockchain developer conference of the year featuring Celo innovations.',
           location: 'San Francisco, CA',
           startDate: Math.floor(Date.now() / 1000) + 86400 * 7, // 7 days from now
           endDate: Math.floor(Date.now() / 1000) + 86400 * 8, // 8 days from now
@@ -114,6 +117,8 @@ export default async function handler(req, res) {
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + parseInt(limit);
       const paginatedEvents = filteredEvents.slice(startIndex, endIndex);
+
+      console.log(`Returning ${paginatedEvents.length} events`);
 
       return res.status(200).json({
         events: paginatedEvents,

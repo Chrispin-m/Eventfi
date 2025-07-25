@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, MapPin, Users, Clock, Search, Filter, Ticket } from 'lucide-react';
+import { Calendar, MapPin, Users, Clock, Search, Filter, Ticket, RefreshCw } from 'lucide-react';
 import { EventCard } from '../components/EventCard';
 import { HeroSection } from '../components/HeroSection';
 
@@ -19,6 +19,7 @@ interface Event {
 export const HomePage: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
@@ -29,37 +30,45 @@ export const HomePage: React.FC = () => {
   const fetchEvents = async () => {
     try {
       setLoading(true);
+      setError(null);
+      
+      console.log('Fetching events from API...');
       const response = await fetch('/api/events');
       
       if (!response.ok) {
-        console.error('Failed to fetch events:', response.status);
-        // Don't throw error, just set empty events
-        setEvents([]);
-        return;
+        const errorText = await response.text();
+        console.error('API Error:', response.status, errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
       
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
-        console.error('Non-JSON response from events API');
-        setEvents([]);
-        return;
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        throw new Error('Server returned non-JSON response');
       }
       
       const data = await response.json();
+      console.log('API Response:', data);
       
       if (data.events && Array.isArray(data.events)) {
         setEvents(data.events);
         console.log(`Loaded ${data.events.length} events`);
       } else {
         console.warn('Invalid events data structure:', data);
-        setEvents([]);
+        throw new Error('Invalid response format - expected events array');
       }
     } catch (error) {
       console.error('Error fetching events:', error);
-      setEvents([]); // Set empty array instead of leaving in loading state
+      setError(error instanceof Error ? error.message : 'Failed to load events');
+      setEvents([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const retryFetch = () => {
+    fetchEvents();
   };
 
   const filteredEvents = events.filter(event => {
@@ -87,8 +96,21 @@ export const HomePage: React.FC = () => {
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Search and Filter Section */}
-        <div className="mb-8">
+        <div className="mb-8" id="events-section">
           <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <h2 className="text-2xl font-bold text-gray-900">Browse Events</h2>
+              <button
+                onClick={retryFetch}
+                disabled={loading}
+                className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                title="Refresh events"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                <span className="text-sm">Refresh</span>
+              </button>
+            </div>
+            
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
@@ -117,6 +139,23 @@ export const HomePage: React.FC = () => {
         </div>
 
         {/* Events Grid */}
+        {error && (
+          <div className="mb-8 bg-red-50 border border-red-200 rounded-lg p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-red-800 font-medium">Failed to load events</h3>
+                <p className="text-red-600 text-sm mt-1">{error}</p>
+              </div>
+              <button
+                onClick={retryFetch}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+        )}
+        
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[...Array(6)].map((_, i) => (

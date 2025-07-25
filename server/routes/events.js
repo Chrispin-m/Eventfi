@@ -154,41 +154,6 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'GET') {
-    try {
-      const { address } = req.query;
-
-      if (!address) {
-        return res.status(400).json({ error: 'Organizer address is required' });
-      }
-
-      if (!ethers.utils.isAddress(address)) {
-        return res.status(400).json({ error: 'Invalid organizer address' });
-      }
-
-      // Filter events by organizer
-      const organizerEvents = mockEvents.filter(event => 
-        event.organizer.toLowerCase() === address.toLowerCase()
-      );
-
-      return res.status(200).json({
-        events: organizerEvents,
-        pagination: {
-          currentPage: 1,
-          totalPages: 1,
-          totalEvents: organizerEvents.length,
-          hasNext: false,
-          hasPrev: false
-        }
-      });
-
-    } catch (error) {
-      console.error('Error fetching organizer events:', error);
-      return res.status(500).json({ 
-        error: 'Failed to fetch organizer events',
-        details: error.message 
-      });
-    }
   }
-
-  return res.status(405).json({ error: 'Method not allowed' });
 }
+export default router;
