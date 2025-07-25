@@ -1,283 +1,19 @@
-import express from 'express';
 import { ethers } from 'ethers';
-import { getEventManagerContract } from '../config/blockchain.js';
-import { asyncHandler } from '../middleware/asyncHandler.js';
 
-const router = express.Router();
-
-/**
- * @route GET /api/events/:id
- * @desc Get event details by ID
- * @access Public
- */
-router.get('/:id', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  
-  if (!id || isNaN(id)) {
-    return res.status(400).json({ error: 'Invalid event ID' });
+// Mock events data
+const mockEvents = [
+  {
+    id: 1,
+    organizer: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A',
+    title: 'CrossFi Developer Conference 2024',
+    description: 'Join us for the biggest blockchain developer conference of the year.',
+    location: 'San Francisco, CA',
+    startDate: Math.floor(Date.now() / 1000) + 86400 * 7,
+    endDate: Math.floor(Date.now() / 1000) + 86400 * 8,
+    active: true,
+    status: 'upcoming'
   }
-
-  try {
-    const contract = getEventManagerContract();
-    
-    if (!contract) {
-      return res.status(500).json({ 
-        error: 'Contract not configured',
-        details: 'EVENT_MANAGER_CONTRACT environment variable not set' 
-      });
-    }
-    
-    // Get event details
-    const eventData = await contract.getEvent(id);
-    
-    // Check if event exists
-    if (!eventData[0] || eventData[0].toString() === '0' || eventData[1] === '0x0000000000000000000000000000000000000000') {
-      return res.status(404).json({ error: 'Event not found' });
-    }
-
-    // Get all ticket tiers
-    const tierCount = parseInt(eventData[9].toString());
-    const tiers = [];
-    
-    for (let i = 0; i < tierCount; i++) {
-      try {
-        const tierData = await contract.getTicketTier(id, i);
-        tiers.push({
-          id: i,
-          name: tierData[0],
-          price: ethers.utils.formatEther(tierData[1]), // Keep for backward compatibility
-          pricePerPerson: ethers.utils.formatEther(tierData[1]),
-          maxSupply: parseInt(tierData[2].toString()),
-          currentSupply: parseInt(tierData[3].toString()),
-          tokenType: ['XFI', 'XUSD', 'MPX'][parseInt(tierData[4].toString())],
-          active: tierData[5],
-          available: parseInt(tierData[2].toString()) - parseInt(tierData[3].toString())
-        });
-      } catch (error) {
-        console.warn(`Error fetching tier ${i} for event ${id}:`, error.message);
-      }
-    }
-
-    const startDate = parseInt(eventData[5].toString());
-    const endDate = parseInt(eventData[6].toString());
-
-    const event = {
-      id: parseInt(eventData[0].toString()),
-      organizer: eventData[1],
-      title: eventData[2],
-      description: eventData[3],
-      location: eventData[4],
-      startDate: startDate,
-      endDate: endDate,
-      metadataURI: eventData[7],
-      active: eventData[8],
-      tierCount: tierCount,
-      tiers: tiers,
-      status: getEventStatus(startDate, endDate)
-    };
-
-    res.json(event);
-  } catch (error) {
-    console.error('Error fetching event:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch event details',
-      details: error.message 
-    });
-  }
-}));
-
-/**
- * @route GET /api/events
- * @desc Get all active events (paginated)
- * @access Public
- */
-router.get('/', asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, organizer } = req.query;
-
-  try {
-    const contract = getEventManagerContract();
-    
-    if (!contract) {
-      return res.status(500).json({ 
-        error: 'Contract not configured',
-        details: 'EVENT_MANAGER_CONTRACT environment variable not set' 
-      });
-    }
-    
-    const events = [];
-    const maxEventId = 100; // Check up to 100 events for performance
-    
-    console.log('Fetching all events...');
-    
-    for (let i = 1; i <= maxEventId; i++) {
-      try {
-        const eventData = await contract.getEvent(i);
-        
-        // Check if event exists and is valid
-        if (eventData[0] && 
-            eventData[0].toString() !== '0' && 
-            eventData[1] !== '0x0000000000000000000000000000000000000000') {
-          
-          // Filter by organizer if specified
-          if (organizer && eventData[1].toLowerCase() !== organizer.toLowerCase()) {
-            continue;
-          }
-
-          const startDate = parseInt(eventData[5].toString());
-          const endDate = parseInt(eventData[6].toString());
-
-          const event = {
-            id: parseInt(eventData[0].toString()),
-            organizer: eventData[1],
-            title: eventData[2],
-            description: eventData[3],
-            location: eventData[4],
-            startDate: startDate,
-            endDate: endDate,
-            metadataURI: eventData[7],
-            active: eventData[8],
-            tierCount: parseInt(eventData[9].toString()),
-            status: getEventStatus(startDate, endDate)
-          };
-
-          if (event.active) {
-            events.push(event);
-          }
-        }
-      } catch (error) {
-        // Event doesn't exist or error reading it
-        if (error.message.includes('execution reverted') || 
-            error.message.includes('invalid opcode') ||
-            error.code === 'CALL_EXCEPTION') {
-          // No more events, break the loop
-          continue;
-        }
-        console.warn(`Error fetching event ${i}:`, error.message);
-      }
-    }
-
-    console.log(`Found ${events.length} total events`);
-
-    // Sort events by ID (newest first)
-    events.sort((a, b) => b.id - a.id);
-
-    // Implement pagination
-    const startIndex = (parseInt(page) - 1) * parseInt(limit);
-    const endIndex = startIndex + parseInt(limit);
-    const paginatedEvents = events.slice(startIndex, endIndex);
-
-    res.json({
-      events: paginatedEvents,
-      pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(events.length / parseInt(limit)),
-        totalEvents: events.length,
-        hasNext: endIndex < events.length,
-        hasPrev: parseInt(page) > 1
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching events:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch events',
-      details: error.message 
-    });
-  }
-}));
-
-/**
- * @route POST /api/events/:id/purchase
- * @desc Purchase a ticket for an event
- * @access Public
- */
-router.post('/:eventId/purchase', asyncHandler(async (req, res) => {
-  const eventId = req.params.eventId;
-  const { tierId, attendeeCount = 1, buyerAddress, signature, message, tokenType } = req.body;
-
-  if (tierId === undefined || !attendeeCount || !buyerAddress || !signature || !message) {
-    return res.status(400).json({ 
-      error: 'Missing required fields: tierId, attendeeCount, buyerAddress, signature, message'
-    });
-  }
-
-  if (attendeeCount < 1 || attendeeCount > 10) {
-    return res.status(400).json({ 
-      error: 'Attendee count must be between 1 and 10'
-    });
-  }
-
-  // Verify the signature
-  try {
-    const signerAddress = ethers.utils.verifyMessage(message, signature);
-    if (signerAddress.toLowerCase() !== buyerAddress.toLowerCase()) {
-      return res.status(401).json({ error: 'Invalid signature' });
-    }
-  } catch (error) {
-    console.error('Signature verification error:', error);
-    return res.status(401).json({ error: 'Signature verification failed' });
-  }
-
-  const contract = getEventManagerContract();
-  
-  if (!contract) {
-    return res.status(500).json({ 
-      error: 'Contract not configured',
-      details: 'EVENT_MANAGER_CONTRACT environment variable not set' 
-    });
-  }
-
-  try {
-    // Get ticket tier details
-    const tierData = await contract.getTicketTier(eventId, parseInt(tierId));
-    const pricePerPerson = tierData[1];
-    const maxSupply = parseInt(tierData[2].toString());
-    const currentSupply = parseInt(tierData[3].toString());
-    const available = maxSupply - currentSupply;
-
-    if (available < attendeeCount) {
-      return res.status(400).json({ error: 'Tickets sold out for this tier' });
-    }
-
-    const totalPrice = pricePerPerson.mul(attendeeCount);
-
-    // Generate metadata URI for the ticket (QR code will include this info)
-    const ticketMetadata = {
-      eventId: eventId,
-      tierId: parseInt(tierId),
-      attendeeCount: parseInt(attendeeCount),
-      buyer: buyerAddress,
-      purchaseTime: Math.floor(Date.now() / 1000),
-      totalPrice: ethers.utils.formatEther(totalPrice),
-      pricePerPerson: ethers.utils.formatEther(pricePerPerson),
-      qrData: `${eventId}-${tierId}-${attendeeCount}-${buyerAddress}-${Date.now()}`
-    };
-
-    const metadataURI = `data:application/json;base64,${Buffer.from(JSON.stringify(ticketMetadata)).toString('base64')}`;
-
-    // Return purchase information (in production, this would trigger the actual transaction)
-    res.json({
-      success: true,
-      purchaseDetails: {
-        eventId: eventId,
-        tierId: parseInt(tierId),
-        attendeeCount: parseInt(attendeeCount),
-        pricePerPerson: ethers.utils.formatEther(pricePerPerson),
-        totalPrice: ethers.utils.formatEther(totalPrice),
-        tokenType: ['XFI', 'XUSD', 'MPX'][parseInt(tierData[4].toString())],
-        metadataURI: metadataURI,
-        qrCode: ticketMetadata.qrData,
-        message: `Ready to purchase ticket for ${attendeeCount} attendee${attendeeCount > 1 ? 's' : ''} - confirm transaction in your wallet`
-      }
-    });
-
-  } catch (error) {
-    console.error('Error processing purchase:', error);
-    res.status(500).json({ 
-      error: 'Failed to process ticket purchase',
-      details: error.message 
-    });
-  }
-}));
+];
 
 function getEventStatus(startDate, endDate) {
   const now = Math.floor(Date.now() / 1000);
@@ -287,4 +23,172 @@ function getEventStatus(startDate, endDate) {
   return 'ended';
 }
 
-export default router;
+export default async function handler(req, res) {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method === 'POST') {
+    try {
+      const {
+        title,
+        description,
+        location,
+        startDate,
+        endDate,
+        metadataURI,
+        feeTokenType,
+        tiers,
+        organizerAddress,
+        signature,
+        message
+      } = req.body;
+
+      // Validate signature
+      if (!signature || !message || !organizerAddress) {
+        return res.status(400).json({ 
+          error: 'Missing required authentication fields: signature, message, organizerAddress' 
+        });
+      }
+
+      try {
+        const signerAddress = ethers.utils.verifyMessage(message, signature);
+        if (signerAddress.toLowerCase() !== organizerAddress.toLowerCase()) {
+          return res.status(401).json({ error: 'Invalid signature' });
+        }
+      } catch (error) {
+        return res.status(401).json({ error: 'Signature validation failed' });
+      }
+
+      // Validation
+      if (!title || !description || !location || !startDate || !endDate) {
+        return res.status(400).json({ 
+          error: 'Missing required fields: title, description, location, startDate, endDate' 
+        });
+      }
+
+      if (new Date(startDate * 1000) <= new Date()) {
+        return res.status(400).json({ error: 'Start date must be in the future' });
+      }
+
+      if (endDate <= startDate) {
+        return res.status(400).json({ error: 'End date must be after start date' });
+      }
+
+      if (!tiers || !Array.isArray(tiers) || tiers.length === 0) {
+        return res.status(400).json({ error: 'At least one ticket tier is required' });
+      }
+
+      const eventData = {
+        title,
+        description,
+        location,
+        startDate,
+        endDate,
+        metadataURI: metadataURI || `data:application/json;base64,${Buffer.from(JSON.stringify({
+          title,
+          description,
+          location,
+          image: 'https://images.pexels.com/photos/2747449/pexels-photo-2747449.jpeg'
+        })).toString('base64')}`,
+        feeTokenType: feeTokenType || 0,
+        organizer: organizerAddress
+      };
+
+      // Validate tiers
+      const validatedTiers = tiers.map((tier, index) => {
+        const pricePerPerson = tier.pricePerPerson || tier.price;
+        
+        if (!tier.name || !tier.name.trim()) {
+          throw new Error(`Invalid tier ${index}: missing name`);
+        }
+        
+        if (!pricePerPerson || Number(pricePerPerson) <= 0) {
+          throw new Error(`Invalid tier ${index}: missing or invalid price`);
+        }
+        
+        if (!tier.maxSupply || Number(tier.maxSupply) <= 0) {
+          throw new Error(`Invalid tier ${index}: missing name, price, or maxSupply`);
+        }
+        
+        return {
+          name: tier.name,
+          pricePerPerson: ethers.utils.parseEther(pricePerPerson.toString()),
+          maxSupply: parseInt(tier.maxSupply),
+          tokenType: tier.tokenType || 0
+        };
+      });
+
+      // Generate a unique event ID for frontend reference
+      const tempEventId = Date.now();
+      
+      // Calculate total listing fee (0 for testing)
+      const listingFee = ethers.utils.parseEther('1');
+
+      return res.status(200).json({
+        success: true,
+        eventData,
+        tiers: validatedTiers,
+        transactionInfo: {
+          contractAddress: process.env.EVENT_MANAGER_CONTRACT,
+          listingFee: ethers.utils.formatEther(listingFee),
+          feeTokenType: eventData.feeTokenType,
+          tempEventId,
+          publicURL: `${process.env.VERCEL_URL || 'http://localhost:3000'}/event/${tempEventId}`
+        },
+        message: 'Event ready to create - confirm transaction in your wallet'
+      });
+
+    } catch (error) {
+      console.error('Error preparing event creation:', error);
+      return res.status(500).json({ 
+        error: error.message || 'Failed to prepare event creation',
+        details: error.message 
+      });
+    }
+  }
+
+  if (req.method === 'GET') {
+    try {
+      const { address } = req.query;
+
+      if (!address) {
+        return res.status(400).json({ error: 'Organizer address is required' });
+      }
+
+      if (!ethers.utils.isAddress(address)) {
+        return res.status(400).json({ error: 'Invalid organizer address' });
+      }
+
+      // Filter events by organizer
+      const organizerEvents = mockEvents.filter(event => 
+        event.organizer.toLowerCase() === address.toLowerCase()
+      );
+
+      return res.status(200).json({
+        events: organizerEvents,
+        pagination: {
+          currentPage: 1,
+          totalPages: 1,
+          totalEvents: organizerEvents.length,
+          hasNext: false,
+          hasPrev: false
+        }
+      });
+
+    } catch (error) {
+      console.error('Error fetching organizer events:', error);
+      return res.status(500).json({ 
+        error: 'Failed to fetch organizer events',
+        details: error.message 
+      });
+    }
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
