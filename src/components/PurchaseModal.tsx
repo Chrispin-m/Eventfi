@@ -75,7 +75,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
       }
 
       // Step 3: Execute blockchain transaction
-      const contractAddress = "0xe3C53563FF4AE7c70B41f31B116c16F1f1583923";
+      const contractAddress = "0x6477a5Db997F7514D196F5ec689FFF59F4484711";
       if (!contractAddress) {
         throw new Error('Contract address not configured');
       }
