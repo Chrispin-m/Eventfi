@@ -48,33 +48,39 @@ export const EventPage: React.FC = () => {
   const fetchEvent = async (eventId: string) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/events/${eventId}`);
+      
+      console.log('Fetching event with ID:', eventId);
+      const response = await fetch(`/api/events/${eventId}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      });
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API Error:', response.status, errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
+        console.error('API Error:', response.status, response.statusText);
+        if (response.status === 404) {
+          throw new Error('Event not found');
+        }
+        throw new Error(`Failed to fetch event: ${response.status}`);
       }
       
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
-        console.error('Non-JSON response:', text);
+        console.error('Non-JSON response received:', text.substring(0, 200));
         throw new Error('Server returned non-JSON response');
       }
       
       const data = await response.json();
+      console.log('Event data received:', data);
       setEvent(data);
-
-     if (response.ok) {
-      setEvent(data);
-     } else {
-      toast.error(data.error || 'Event not found');
-     }
       
     } catch (error) {
       console.error('Error fetching event:', error);
-      toast.error('Failed to load event details');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load event details';
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

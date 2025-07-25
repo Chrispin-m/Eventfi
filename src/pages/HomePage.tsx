@@ -33,18 +33,23 @@ export const HomePage: React.FC = () => {
       setError(null);
       
       console.log('Fetching events from API...');
-      const response = await fetch('/api/events');
+      const response = await fetch('/api/events', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      });
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API Error:', response.status, errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+        console.error('API Error:', response.status, response.statusText);
+        throw new Error(`HTTP ${response.status}: Failed to fetch events`);
       }
       
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
-        console.error('Non-JSON response:', text);
+        console.error('Non-JSON response received:', text.substring(0, 200));
         throw new Error('Server returned non-JSON response');
       }
       
