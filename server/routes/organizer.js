@@ -56,13 +56,18 @@ router.post('/events/prepare', asyncHandler(async (req, res) => {
 
   // Validate tiers
   for (const [index, tier] of tiers.entries()) {
-    if (!tier.name || !tier.price || !tier.maxSupply) {
+    if (!tier.name || !tier.name.trim()) {
       return res.status(400).json({ 
         error: `Invalid tier ${index + 1}: missing name, price, or maxSupply` 
       });
     }
     
-    if (Number(tier.price) <= 0) {
+    const pricePerPerson = tier.pricePerPerson || tier.price;
+    if (!pricePerPerson || Number(pricePerPerson) <= 0) {
+      throw new Error(`Invalid tier ${index + 1}: missing name, price, or maxSupply`);
+    }
+    
+    if (!tier.maxSupply || Number(tier.maxSupply) <= 0) {
       return res.status(400).json({ 
         error: `Invalid tier ${index + 1}: price must be greater than 0` 
       });
