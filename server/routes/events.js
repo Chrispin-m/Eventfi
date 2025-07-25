@@ -1,5 +1,6 @@
 import express from 'express';
 import { ethers } from 'ethers';
+import { getEventManagerContract } from '../config/blockchain.js';
 
 const router = express.Router();
 
