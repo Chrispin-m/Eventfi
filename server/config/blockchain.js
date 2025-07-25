@@ -71,12 +71,12 @@ export function getEventManagerContract() {
                          CONTRACT_ADDRESSES.EVENT_MANAGER;
   
   if (!contractAddress) {
-    console.warn('EventManager contract address not configured. Please set EVENT_MANAGER_CONTRACT environment variable.');
+    console.warn('EventManager contract address not configured. Using mock data fallback.');
     // Return null instead of throwing to allow graceful handling
     return null;
   }
   
-  console.log('Using contract address:', contractAddress);
+  console.log('Using EventManager contract address:', contractAddress);
   
   return new ethers.Contract(
     contractAddress,

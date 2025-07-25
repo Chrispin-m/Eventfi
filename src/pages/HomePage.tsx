@@ -51,13 +51,19 @@ export const HomePage: React.FC = () => {
       const data = await response.json();
       console.log('API Response:', data);
       
-      if (data.events && Array.isArray(data.events)) {
-        setEvents(data.events);
-        console.log(`Loaded ${data.events.length} events`);
+      // Handle both array response and object with events property
+      let eventsArray;
+      if (Array.isArray(data)) {
+        eventsArray = data;
+      } else if (data.events && Array.isArray(data.events)) {
+        eventsArray = data.events;
       } else {
         console.warn('Invalid events data structure:', data);
         throw new Error('Invalid response format - expected events array');
       }
+      
+      setEvents(eventsArray);
+      console.log(`Loaded ${eventsArray.length} events`);
     } catch (error) {
       console.error('Error fetching events:', error);
       setError(error instanceof Error ? error.message : 'Failed to load events');
