@@ -114,11 +114,11 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
         toast.error(`Tier ${index + 1} name is required`);
         return false;
       }
-      if (!tier.pricePerPerson || parseFloat(tier.pricePerPerson) <= 0) {
+      if (!tier.pricePerPerson || tier.pricePerPerson.trim() === '' || parseFloat(tier.pricePerPerson) <= 0) {
         toast.error(`Tier ${index + 1} price must be greater than 0`);
         return false;
       }
-      if (!tier.maxSupply || parseInt(tier.maxSupply) <= 0) {
+      if (!tier.maxSupply || tier.maxSupply.trim() === '' || parseInt(tier.maxSupply) <= 0) {
         toast.error(`Tier ${index + 1} max supply must be greater than 0`);
         return false;
       }
@@ -159,7 +159,12 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onS
           startDate: startTimestamp,
           endDate: endTimestamp,
           feeTokenType: formData.feeTokenType,
-          tiers: tiers,
+          tiers: tiers.map(tier => ({
+            name: tier.name.trim(),
+            pricePerPerson: tier.pricePerPerson.trim(),
+            maxSupply: tier.maxSupply.trim(),
+            tokenType: tier.tokenType
+          })),
           organizerAddress: account,
           signature: signature,
           message: message
