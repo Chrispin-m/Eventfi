@@ -113,7 +113,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
 
         {/* Action Button */}
         <Link
-          to={`api/event/${event.id}`}
+          to={`/api/event/${event.id}`}
           className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-2 px-4 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all duration-200 flex items-center justify-center space-x-2 group"
         >
           <span>View Event</span>
