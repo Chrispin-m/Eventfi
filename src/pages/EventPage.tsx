@@ -50,7 +50,7 @@ export const EventPage: React.FC = () => {
       setLoading(true);
       
       console.log('Fetching event with ID:', eventId);
-      const response = await fetch(`/api/events/${eventId}`, {
+      const response = await fetch(`events/${eventId}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
