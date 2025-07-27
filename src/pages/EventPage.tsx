@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { Calendar, MapPin, Clock, User, Ticket, ArrowLeft, Share2 } from 'lucide-react';
 import { useWeb3 } from '../context/Web3Context';
 import { TicketTierCard } from '../components/TicketTierCard';
@@ -33,6 +33,7 @@ interface Event {
 
 export const EventPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const { isConnected } = useWeb3();
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,17 +41,20 @@ export const EventPage: React.FC = () => {
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
 
   useEffect(() => {
-    if (id) {
+    // Use existing event data if available
+    if (location.state?.event) {
+      setEvent(location.state.event);
+      setLoading(false);
+    } else if (id) {
       fetchEvent(id);
     }
-  }, [id]);
+  }, [id, location.state]);
 
   const fetchEvent = async (eventId: string) => {
     try {
       setLoading(true);
       
-      console.log('Fetching event with ID:', eventId);
-      const response = await fetch(`events/${eventId}`, {
+      const response = await fetch(`/api/events/${eventId}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -60,21 +64,19 @@ export const EventPage: React.FC = () => {
       
       if (!response.ok) {
         console.error('API Error:', response.status, response.statusText);
-        if (response.status === 404) {
-          throw new Error('Event not found');
+        
+        // Handle non-JSON responses
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text();
+          console.error('Non-JSON response received:', text.substring(0, 200));
+          throw new Error(`Server returned non-JSON response: ${text.substring(0, 100)}...`);
         }
+        
         throw new Error(`Failed to fetch event: ${response.status}`);
       }
       
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        const text = await response.text();
-        console.error('Non-JSON response received:', text.substring(0, 200));
-        throw new Error('Server returned non-JSON response');
-      }
-      
       const data = await response.json();
-      console.log('Event data received:', data);
       setEvent(data);
       
     } catch (error) {
@@ -97,7 +99,6 @@ export const EventPage: React.FC = () => {
       return;
     }
 
-    console.log('Purchasing tier:', tier);
     setSelectedTier(tier);
     setShowPurchaseModal(true);
   };
@@ -105,7 +106,6 @@ export const EventPage: React.FC = () => {
   const handlePurchaseComplete = () => {
     setShowPurchaseModal(false);
     setSelectedTier(null);
-    // Refresh event data to update availability
     if (id) {
       fetchEvent(id);
     }
@@ -145,7 +145,6 @@ export const EventPage: React.FC = () => {
         // User cancelled sharing
       }
     } else {
-      // Fallback to clipboard
       navigator.clipboard.writeText(url);
       toast.success('Event link copied to clipboard!');
     }
