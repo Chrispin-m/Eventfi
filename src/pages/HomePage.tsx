@@ -32,7 +32,6 @@ export const HomePage: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      console.log('Fetching events from API...');
       const response = await fetch('/api/events', {
         method: 'GET',
         headers: {
@@ -42,33 +41,27 @@ export const HomePage: React.FC = () => {
       });
       
       if (!response.ok) {
-        console.error('API Error:', response.status, response.statusText);
         throw new Error(`HTTP ${response.status}: Failed to fetch events`);
       }
       
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
-        console.error('Non-JSON response received:', text.substring(0, 200));
-        throw new Error('Server returned non-JSON response');
+        throw new Error(`Non-JSON response: ${text.substring(0, 100)}...`);
       }
       
       const data = await response.json();
-      console.log('API Response:', data);
       
-      // Handle both array response and object with events property
       let eventsArray;
       if (Array.isArray(data)) {
         eventsArray = data;
       } else if (data.events && Array.isArray(data.events)) {
         eventsArray = data.events;
       } else {
-        console.warn('Invalid events data structure:', data);
         throw new Error('Invalid response format - expected events array');
       }
       
       setEvents(eventsArray);
-      console.log(`Loaded ${eventsArray.length} events`);
     } catch (error) {
       console.error('Error fetching events:', error);
       setError(error instanceof Error ? error.message : 'Failed to load events');
@@ -91,15 +84,6 @@ export const HomePage: React.FC = () => {
     
     return matchesSearch && matchesStatus;
   });
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'live': return 'text-green-600 bg-green-100';
-      case 'upcoming': return 'text-blue-600 bg-blue-100';
-      case 'ended': return 'text-gray-600 bg-gray-100';
-      default: return 'text-gray-600 bg-gray-100';
-    }
-  };
 
   return (
     <div className="min-h-screen">
