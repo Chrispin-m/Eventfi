@@ -65,7 +65,10 @@ app.use('/api/tickets', ticketRoutes);
 app.use(express.static(path.join(__dirname, '../dist')));
 
 // === Catch-all: Serve index.html for client-side routing ===
-app.get('*', (req, res) => {
+app.get('*', (req, res, next) => {
+  if (req.originalUrl.startsWith('/api')) {
+    return res.status(404).json({ error: 'API route not found' });
+  }
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
