@@ -5,13 +5,14 @@ import { toast } from 'react-toastify';
 
 interface Ticket {
   id: number;
-  valid: boolean;
-  status: string;
-  qrCode: string;
-  verification: {
-    valid: boolean;
-    reason: string;
-  };
+  eventTitle: string;
+  eventLocation: string;
+  eventStartDate: number;
+  qrCode?: string;
+  valid?: boolean;
+  validationReason?: string;
+  blockchainVerified?: boolean;
+  status: 'upcoming' | 'live' | 'ended';
 }
 
 export const TicketPage: React.FC = () => {
@@ -32,7 +33,16 @@ export const TicketPage: React.FC = () => {
       const data = await response.json();
       
       if (response.ok) {
-        setTicket(data);
+        // Add safe defaults for missing properties
+        const safeTicket: Ticket = {
+          ...data,
+          valid: data.valid ?? false,
+          validationReason: data.validationReason || '',
+          qrCode: data.qrCode || '',
+          blockchainVerified: data.blockchainVerified || false,
+          status: data.status || 'upcoming'
+        };
+        setTicket(safeTicket);
       } else {
         toast.error(data.error || 'Ticket not found');
       }
@@ -72,6 +82,7 @@ export const TicketPage: React.FC = () => {
     }
   };
 
+  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -80,6 +91,7 @@ export const TicketPage: React.FC = () => {
     );
   }
 
+  // Ticket not found state
   if (!ticket) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -131,15 +143,15 @@ export const TicketPage: React.FC = () => {
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold mb-1">CrossFi Ticket</h1>
+                <h1 className="text-2xl font-bold mb-1">{ticket.eventTitle}</h1>
                 <p className="text-blue-100">Ticket #{id}</p>
               </div>
               <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${
-                ticket.verification.valid 
+                ticket.valid 
                   ? 'bg-green-100 text-green-800' 
                   : 'bg-red-100 text-red-800'
               }`}>
-                {ticket.verification.valid ? (
+                {ticket.valid ? (
                   <>
                     <CheckCircle className="w-4 h-4" />
                     <span>Valid</span>
@@ -186,27 +198,53 @@ export const TicketPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Ticket Status */}
-          <div className="px-8 pb-8">
+          {/* Ticket Details */}
+          <div className="px-8 pb-8 space-y-6">
+            {/* Event Details */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h3 className="font-medium text-gray-900 mb-3">Event Details</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Location:</span>
+                  <span className="font-medium">{ticket.eventLocation}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Date:</span>
+                  <span className="font-medium">
+                    {new Date(ticket.eventStartDate * 1000).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Status:</span>
+                  <span className="font-medium capitalize">{ticket.status}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Ticket Status */}
             <div className="bg-gray-50 rounded-lg p-4">
               <h3 className="font-medium text-gray-900 mb-2">Ticket Status</h3>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Validity:</span>
-                  <span className={ticket.verification.valid ? 'text-green-600' : 'text-red-600'}>
-                    {ticket.verification.reason}
+                  <span className={ticket.valid ? 'text-green-600' : 'text-red-600'}>
+                    {ticket.validationReason || (ticket.valid ? 'Valid ticket' : 'Invalid ticket')}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Ticket ID:</span>
                   <span className="font-mono">{id}</span>
                 </div>
+                {ticket.blockchainVerified && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Verification:</span>
+                    <span className="text-green-600">Blockchain Verified ✓</span>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
 
-          {/* Instructions */}
-          <div className="px-8 pb-8">
+            {/* Instructions */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h3 className="font-medium text-blue-900 mb-2">Instructions</h3>
               <ul className="text-sm text-blue-800 space-y-1">
