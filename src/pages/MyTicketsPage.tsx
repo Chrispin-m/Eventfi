@@ -17,12 +17,13 @@ interface UserTicket {
   totalAmountPaid: string;
   tokenType: string;
   purchaseTime: number;
-  used: boolean;
-  valid: boolean;
-  qrCode: string;
+  used?: boolean;        // Make optional
+  valid?: boolean;       // Make optional
+  qrCode?: string;       // Make optional
   status: 'upcoming' | 'live' | 'ended';
   purchaser: string;
   blockchainVerified?: boolean;
+  validationReason?: string;  // Add this
 }
 
 export const MyTicketsPage: React.FC = () => {
@@ -53,7 +54,15 @@ export const MyTicketsPage: React.FC = () => {
       }
       
       const data = await response.json();
-      setTickets(data.tickets || []);
+      // Add safe defaults for missing properties
+      const safeTickets = (data.tickets || []).map((ticket: any) => ({
+        ...ticket,
+        used: ticket.used || false,
+        valid: ticket.valid || false,
+        qrCode: ticket.qrCode || '',
+        validationReason: ticket.validationReason || ''
+      }));
+      setTickets(safeTickets);
       
     } catch (error) {
       console.error('Error fetching user tickets:', error);
@@ -77,7 +86,7 @@ export const MyTicketsPage: React.FC = () => {
       let qrCodeUrl = ticket.qrCode;
       
       if (!qrCodeUrl) {
-        const response = await fetch(`/api/tickets/generate-qr/${ticket.id}?eventId=${ticket.eventId}&attendeeCount=${ticket.attendeeCount}`);
+        const response = await fetch(`/api/tickets/${ticket.id}`);
         const data = await response.json();
         qrCodeUrl = data.qrCode;
       }
@@ -353,6 +362,11 @@ export const MyTicketsPage: React.FC = () => {
                       {ticket.valid && !ticket.used && (
                         <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
                           Valid
+                        </span>
+                      )}
+                      {!ticket.valid && ticket.validationReason && (
+                        <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
+                          {ticket.validationReason}
                         </span>
                       )}
                       {ticket.blockchainVerified && (
