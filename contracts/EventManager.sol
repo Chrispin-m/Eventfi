@@ -16,7 +16,7 @@ contract EventManager is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
     using Counters for Counters.Counter;
 
     // Platform fee recipient
-    address public constant PLATFORM_ADDRESS = 0x1f9031A2beA086a591e9872FE3A26F01570A8B2A;
+    address public constant PLATFORM_ADDRESS = 0xdeAFa17D50dBa6224177FFA396395A7E096f250E;
     
     // Token addresses on CrossFi Chain
     address public constant XFI_TOKEN = 0x0000000000000000000000000000000000000000; // Native token
