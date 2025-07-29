@@ -6,8 +6,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fetch from 'node-fetch';
-
+import http from 'http';
 import eventRoutes from './routes/events.js';
 import organizerRoutes from './routes/organizer.js';
 import ticketRoutes from './routes/tickets.js';
@@ -98,21 +97,30 @@ process.on('SIGINT', () => {
 const SELF_PING_INTERVAL = 15 * 1000; // check every 15 sec
 const IDLE_TIME_LIMIT = 60 * 1000; // 1 minute idle
 
-setInterval(async () => {
+setInterval(() => {
   const now = Date.now();
   if (now - lastRequestTime > IDLE_TIME_LIMIT) {
-    try {
-      const url = `http://localhost:${PORT}/health`;
-      const response = await fetch(url);
-      if (response.ok) {
+    const options = {
+      hostname: 'localhost',
+      port: PORT,
+      path: '/health',
+      method: 'GET',
+    };
+
+    const req = http.request(options, res => {
+      if (res.statusCode === 200) {
         console.log(`[Keep-Alive] Self-ping successful at ${new Date().toISOString()}`);
         lastRequestTime = Date.now();
       } else {
-        console.warn(`[Keep-Alive] Self-ping responded with status ${response.status}`);
+        console.warn(`[Keep-Alive] Self-ping responded with status ${res.statusCode}`);
       }
-    } catch (err) {
-      console.error('[Keep-Alive] Self-ping failed:', err.message);
-    }
+    });
+
+    req.on('error', error => {
+      console.error('[Keep-Alive] Self-ping failed:', error.message);
+    });
+
+    req.end();
   }
 }, SELF_PING_INTERVAL);
 
