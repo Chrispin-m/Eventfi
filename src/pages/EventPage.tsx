@@ -10,6 +10,7 @@ interface TicketTier {
   id: number;
   name: string;
   price: string;
+  pricePerPerson: string; // Added to match backend
   maxSupply: number;
   currentSupply: number;
   tokenType: string;
@@ -28,7 +29,7 @@ interface Event {
   metadataURI: string;
   active: boolean;
   status: string;
-  tiers: TicketTier[];
+  tiers: TicketTier[]; // Fixed to match backend response
 }
 
 export const EventPage: React.FC = () => {
@@ -45,6 +46,9 @@ export const EventPage: React.FC = () => {
     if (location.state?.event) {
       setEvent(location.state.event);
       setLoading(false);
+      
+      // Still fetch full event details for tiers
+      if (id) fetchEvent(id);
     } else if (id) {
       fetchEvent(id);
     }
@@ -54,6 +58,7 @@ export const EventPage: React.FC = () => {
     try {
       setLoading(true);
       
+      // Fixed endpoint path to match Next.js API route
       const response = await fetch(`/api/events/${eventId}`, {
         method: 'GET',
         headers: {
