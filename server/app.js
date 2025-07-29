@@ -6,12 +6,12 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fetch from 'node-fetch';
 
 import eventRoutes from './routes/events.js';
 import organizerRoutes from './routes/organizer.js';
 import ticketRoutes from './routes/tickets.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { validateSignature } from './middleware/auth.js';
 
 dotenv.config();
 
@@ -43,6 +43,15 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Track last request time for idle detection
+let lastRequestTime = Date.now();
+
+// Middleware to update lastRequestTime on every incoming request
+app.use((req, res, next) => {
+  lastRequestTime = Date.now();
+  next();
+});
+
 // === API Routes ===
 app.get('/health', (req, res) => {
   res.status(200).json({
@@ -72,7 +81,6 @@ app.get('*', (req, res, next) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
-// === Error handling ===
 app.use(errorHandler);
 
 // === Graceful shutdown ===
@@ -85,6 +93,28 @@ process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
   process.exit(0);
 });
+
+// Self-ping function to keep server alive if idle > 1 minute
+const SELF_PING_INTERVAL = 15 * 1000; // check every 15 sec
+const IDLE_TIME_LIMIT = 60 * 1000; // 1 minute idle
+
+setInterval(async () => {
+  const now = Date.now();
+  if (now - lastRequestTime > IDLE_TIME_LIMIT) {
+    try {
+      const url = `http://localhost:${PORT}/health`;
+      const response = await fetch(url);
+      if (response.ok) {
+        console.log(`[Keep-Alive] Self-ping successful at ${new Date().toISOString()}`);
+        lastRequestTime = Date.now();
+      } else {
+        console.warn(`[Keep-Alive] Self-ping responded with status ${response.status}`);
+      }
+    } catch (err) {
+      console.error('[Keep-Alive] Self-ping failed:', err.message);
+    }
+  }
+}, SELF_PING_INTERVAL);
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
