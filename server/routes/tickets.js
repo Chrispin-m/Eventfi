@@ -318,39 +318,56 @@ router.post('/verify', asyncHandler(async (req, res) => {
     }
     
     // Get complete ticket information from blockchain
-    const ticketInfo = await contract.getTicketInfo(ticketData.ticketId);
-    
-    // Get event details
-    const eventData = await contract.getEvent(ticketInfo.eventId.toString());
-    
-    // Get tier details
-    const tierData = await contract.getTicketTier(ticketInfo.eventId.toString(), ticketInfo.tierId.toString());
-    
-    const verificationResult = {
-      ticketId: parseInt(ticketInfo.id.toString()),
-      eventId: parseInt(ticketInfo.eventId.toString()),
-      eventTitle: eventData[2],
-      eventLocation: eventData[4],
-      eventStartDate: parseInt(eventData[5].toString()),
-      eventEndDate: parseInt(eventData[6].toString()),
-      tierName: tierData[0],
-      attendeeCount: parseInt(ticketInfo.attendeeCount.toString()),
-      totalAmountPaid: ethers.utils.formatEther(ticketInfo.totalAmountPaid),
-      pricePerPerson: ethers.utils.formatEther(tierData[1]),
-      tokenType: ['XFI', 'XUSD', 'MPX'][parseInt(ticketInfo.paymentToken.toString())],
-      purchaseTimestamp: parseInt(ticketInfo.purchaseTimestamp.toString()),
-      purchaser: ticketInfo.purchaser,
-      used: ticketInfo.used,
-      valid: ticketInfo.valid,
-      reason: ticketInfo.reason,
-      eventStatusAtPurchase: ['upcoming', 'live', 'ended'][parseInt(ticketInfo.eventStatusAtPurchase.toString())],
-      currentEventStatus: ['upcoming', 'live', 'ended'][parseInt(ticketInfo.currentEventStatus.toString())],
-      qrData,
-      timestamp: new Date().toISOString(),
-      blockchainVerified: true
-    };
+const ticketInfo = await contract.getTicketInfo(ticketId);
 
-    res.json(verificationResult);
+// Destructure the tuple into individual variables
+const [
+  id, 
+  eventId, 
+  tierId, 
+  purchaser, 
+  attendeeCount, 
+  totalAmountPaid, 
+  purchaseTimestamp, 
+  paymentToken, 
+  used, 
+  eventStatusAtPurchase, 
+  currentEventStatus, 
+  valid, 
+  reason
+] = ticketInfo;
+
+// Get event details
+const eventData = await contract.getEvent(eventId);
+
+// Get tier details
+const tierData = await contract.getTicketTier(eventId, tierId);
+
+const verificationResult = {
+  ticketId: parseInt(id.toString()),
+  eventId: parseInt(eventId.toString()),
+  eventTitle: eventData.title,
+  eventLocation: eventData.location,
+  eventStartDate: parseInt(eventData.startDate.toString()),
+  eventEndDate: parseInt(eventData.endDate.toString()),
+  tierName: tierData.name,
+  attendeeCount: parseInt(attendeeCount.toString()),
+  totalAmountPaid: ethers.utils.formatEther(totalAmountPaid),
+  pricePerPerson: ethers.utils.formatEther(tierData.pricePerPerson),
+  tokenType: ['XFI', 'XUSD', 'MPX'][parseInt(paymentToken.toString())],
+  purchaseTimestamp: parseInt(purchaseTimestamp.toString()),
+  purchaser: purchaser,
+  used: used,
+  valid: valid,
+  validationReason: reason,  //'reason' from contract
+  eventStatusAtPurchase: ['upcoming', 'live', 'ended'][parseInt(eventStatusAtPurchase.toString())],
+  currentEventStatus: ['upcoming', 'live', 'ended'][parseInt(currentEventStatus.toString())],
+  qrData: generateQRCode(ticketId), // QR generation function
+  timestamp: new Date().toISOString(),
+  blockchainVerified: true
+};
+
+res.json(verificationResult);
 
   } catch (error) {
     console.error('Error verifying ticket:', error);
