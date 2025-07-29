@@ -32,6 +32,7 @@ export const HomePage: React.FC = () => {
       setLoading(true);
       setError(null);
       
+      // Fixed endpoint path to match Next.js API route
       const response = await fetch('/api/events', {
         method: 'GET',
         headers: {
