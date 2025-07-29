@@ -28,7 +28,7 @@ export const TOKEN_ADDRESSES = {
 
 // Contract addresses
 export const CONTRACT_ADDRESSES = {
-  EVENT_MANAGER: process.env.EVENT_MANAGER_CONTRACT || '',
+  EVENT_MANAGER: process.env.VITE_EVENT_MANAGER_CONTRACT || '',
 };
 
 // Platform configuration
