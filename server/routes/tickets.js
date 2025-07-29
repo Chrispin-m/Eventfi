@@ -44,7 +44,7 @@ router.get('/user/:address', asyncHandler(async (req, res) => {
       try {
         // Get complete ticket information from blockchain
         const ticketInfo = await contract.getTicketInfo(ticketId.toString());
-        
+        console.log('Raw ticketInfo:', ticketInfo);
         // Get event details
         const eventData = await contract.getEvent(ticketInfo.eventId.toString());
         
