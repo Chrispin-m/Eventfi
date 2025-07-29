@@ -23,7 +23,7 @@ interface UserTicket {
   status: 'upcoming' | 'live' | 'ended';
   purchaser: string;
   blockchainVerified?: boolean;
-  validationReason?: string;  // Add this
+  validationReason?: string;  //
 }
 
 export const MyTicketsPage: React.FC = () => {
@@ -54,30 +54,16 @@ export const MyTicketsPage: React.FC = () => {
       }
       
       const data = await response.json();
-      
-      // Enhanced safe mapping with defaults
+      // Add safe defaults for missing properties
       const safeTickets = (data.tickets || []).map((ticket: any) => ({
-        id: ticket.id || 0,
-        eventId: ticket.eventId || 0,
-        eventTitle: ticket.eventTitle || 'Unknown Event',
-        eventLocation: ticket.eventLocation || 'Location not specified',
-        eventStartDate: ticket.eventStartDate || 0,
-        eventEndDate: ticket.eventEndDate || 0,
-        tierName: ticket.tierName || 'General Admission',
-        pricePerPerson: ticket.pricePerPerson || '0.0',
-        attendeeCount: ticket.attendeeCount || 1,
-        totalAmountPaid: ticket.totalAmountPaid || '0.0',
-        tokenType: ticket.tokenType || 'XFI',
-        purchaseTime: ticket.purchaseTime || Date.now() / 1000,
-        used: ticket.used ?? false,   // Nullish coalescing
-        valid: ticket.valid ?? false,  // Nullish coalescing
+        ...ticket,
+        used: ticket.used ?? false,
+        valid: ticket.valid ?? false,
         qrCode: ticket.qrCode || '',
+        validationReason: ticket.validationReason || '',
         status: ticket.status || 'upcoming',
-        purchaser: ticket.purchaser || account || '',
-        blockchainVerified: ticket.blockchainVerified || false,
-        validationReason: ticket.validationReason || ''
+        tokenType: ticket.tokenType || 'XFI'
       }));
-      
       setTickets(safeTickets);
       
     } catch (error) {
@@ -88,6 +74,7 @@ export const MyTicketsPage: React.FC = () => {
       setLoading(false);
     }
   };
+
   const refreshTickets = async () => {
     setRefreshing(true);
     await fetchUserTickets();
@@ -97,16 +84,16 @@ export const MyTicketsPage: React.FC = () => {
 
   const downloadTicket = async (ticket: UserTicket) => {
     try {
-      // Generate QR code if not available
+      // QR code if not available
       let qrCodeUrl = ticket.qrCode;
       
       if (!qrCodeUrl) {
         const response = await fetch(`/api/tickets/${ticket.id}`);
         const data = await response.json();
-        qrCodeUrl = data.qrCode;
+        qrCodeUrl = data.qrCode || '';
       }
 
-      // Create a canvas to generate the ticket image
+      // a canvas to generate the ticket image
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
@@ -366,36 +353,35 @@ export const MyTicketsPage: React.FC = () => {
                     </div>
                   )}
 
-                   {/* Status Indicators - UPDATED WITH SAFETY CHECKS */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-2">
-          {ticket.used && (
-            <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full">
-              Used
-            </span>
-          )}
-          
-          {/* SAFE ACCESS WITH OPTIONAL CHAINING */}
-          {(ticket.valid && !ticket.used) && (
-            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-              Valid
-            </span>
-          )}
-          
-          {/* SAFE ACCESS WITH OPTIONAL CHAINING */}
-          {(!ticket.valid && ticket.validationReason) && (
-            <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
-              {ticket.validationReason}
-            </span>
-          )}
-          
-          {ticket.blockchainVerified && (
-            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-              Blockchain ✓
-            </span>
-          )}
-        </div>
-      </div>
+                  {/* Status Indicators */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-2">
+                      {ticket.used && (
+                        <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full">
+                          Used
+                        </span>
+                      )}
+                      
+                      {/* SAFE ACCESS WITH OPTIONAL CHAINING AND FALLBACK */}
+                      {((ticket.valid ?? false) && !(ticket.used ?? false)) && (
+                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                          Valid
+                        </span>
+                      )}
+                      
+                      {!ticket.valid && ticket.validationReason && (
+                        <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
+                          {ticket.validationReason}
+                        </span>
+                      )}
+                      
+                      {ticket.blockchainVerified && (
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                          Blockchain ✓
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
                   {/* Actions */}
                   <div className="flex space-x-2">
