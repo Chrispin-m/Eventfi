@@ -285,34 +285,42 @@ router.get('/:id', asyncHandler(async (req, res) => {
  * @desc Verify a ticket using QR code data (enhanced with full ticket info)
  * @access Public
  */
+/**
+ * @route POST /api/tickets/verify
+ * @desc Verify a ticket using QR code data (enhanced with full ticket info)
+ * @access Public
+ */
 router.post('/verify', asyncHandler(async (req, res) => {
   const { qrData, organizerAddress } = req.body;
 
+  console.log('📩 [VERIFY] Incoming request body:', req.body);
+
   if (!qrData) {
+    console.warn('❌ QR code data missing from request');
     return res.status(400).json({ error: 'QR code data is required' });
   }
 
   try {
-    // Parse QR code data to extract ticket information
+    // Extract ticket data from QR
     const ticketData = extractTicketDataFromQR(qrData);
-    console.log(ticketData);
-    
+    console.log('🔍 Parsed ticket data from QR:', ticketData);
+
     if (!ticketData || !ticketData.ticketId) {
+      console.warn('⚠️ Invalid QR data format or missing ticketId:', ticketData);
       return res.status(400).json({ error: 'Invalid QR code format' });
     }
 
     const contract = getEventManagerContract();
-    
-    if (!contract) {
-      return res.status(500).json({ 
-        error: 'Contract not configured' 
-      });
-    }
-    
-    // Get ticket info
-    const ticketInfo = await contract.getTicketInfo(ticketData.ticketId);
 
-    // Destructure the tuple
+    if (!contract) {
+      console.error('🚫 Contract not configured (EVENT_MANAGER_CONTRACT missing)');
+      return res.status(500).json({ error: 'Contract not configured' });
+    }
+
+    console.log(`🔗 Fetching ticket info for ticketId ${ticketData.ticketId} from contract...`);
+    const ticketInfo = await contract.getTicketInfo(ticketData.ticketId);
+    console.log('🎟️ TicketInfo from contract:', ticketInfo);
+
     const [
       id, 
       eventId, 
@@ -329,13 +337,14 @@ router.post('/verify', asyncHandler(async (req, res) => {
       reason
     ] = ticketInfo;
 
-    // Convert to strings for contract calls
     const eventIdStr = eventId.toString();
     const tierIdStr = tierId.toString();
 
-    // Get event and tier details
+    console.log(`📅 Fetching event ${eventIdStr} and tier ${tierIdStr} data...`);
     const eventData = await contract.getEvent(eventIdStr);
     const tierData = await contract.getTicketTier(eventIdStr, tierIdStr);
+    console.log('📄 EventData:', eventData);
+    console.log('💺 TierData:', tierData);
 
     const verificationResult = {
       ticketId: id.toNumber(),
@@ -360,18 +369,21 @@ router.post('/verify', asyncHandler(async (req, res) => {
       blockchainVerified: true
     };
 
+    console.log('✅ Verification result:', verificationResult);
+
     res.json(verificationResult);
 
   } catch (error) {
-    console.error('Error verifying ticket:', error);
+    console.error('🔥 Error during ticket verification:', error);
+
     if (error.message.includes('Ticket does not exist')) {
-      res.status(404).json({ 
+      return res.status(404).json({ 
         error: 'Ticket not found',
         valid: false,
         reason: 'Ticket does not exist on blockchain'
       });
     } else {
-      res.status(500).json({ 
+      return res.status(500).json({ 
         error: 'Failed to verify ticket',
         details: error.message 
       });
