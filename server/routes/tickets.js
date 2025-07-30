@@ -299,106 +299,137 @@ router.get('/:id', asyncHandler(async (req, res) => {
  * @desc Verify a ticket using QR code data (enhanced with full ticket info)
  * @access Public
  */
+/**
+ * @route POST /api/tickets/verify
+ * @desc Verify a ticket using QR code data (enhanced with full ticket info)
+ * @access Public
+ */
 router.post('/verify', asyncHandler(async (req, res) => {
   const { qrData, organizerAddress } = req.body;
-
-  console.log('📩 [VERIFY] Incoming request body:', req.body);
+  console.log(`📩 [VERIFY] Incoming request body: ${JSON.stringify(req.body)}`);
 
   if (!qrData) {
-    console.warn('❌ QR code data missing from request');
+    console.warn('❌ [VERIFY] Missing qrData');
     return res.status(400).json({ error: 'QR code data is required' });
   }
 
+  let ticketData;
   try {
-    // Extract ticket data from QR
-    const ticketData = extractTicketDataFromQR(qrData);
-    console.log('🔍 Parsed ticket data from QR:', ticketData);
+    ticketData = extractTicketDataFromQR(qrData);
+    console.log(`🔍 [VERIFY] Parsed ticketData: ${JSON.stringify(ticketData)}`);
+  } catch (parseErr) {
+    console.warn('⚠️ [VERIFY] QR parse error:', parseErr.message);
+    return res.status(400).json({ error: 'Invalid QR code format' });
+  }
 
-    if (!ticketData || !ticketData.ticketId) {
-      console.warn('⚠️ Invalid QR data format or missing ticketId:', ticketData);
-      return res.status(400).json({ error: 'Invalid QR code format' });
-    }
+  if (!ticketData.ticketId) {
+    console.warn('⚠️ [VERIFY] Missing ticketId in parsed data');
+    return res.status(400).json({ error: 'Invalid QR code format' });
+  }
 
-    const contract = getEventManagerContract();
+  const contract = getEventManagerContract();
+  if (!contract) {
+    console.error('🚫 [VERIFY] Contract not configured');
+    return res.status(500).json({ error: 'Contract not configured' });
+  }
+  console.log(`🔗 [VERIFY] Using EventManager at ${contract.address}`);
 
-    if (!contract) {
-      console.error('🚫 Contract not configured (EVENT_MANAGER_CONTRACT missing)');
-      return res.status(500).json({ error: 'Contract not configured' });
-    }
-
-    console.log(`🔗 Fetching ticket info for ticketId ${ticketData.ticketId} from contract...`);
+  try {
+    console.log(`🔗 [VERIFY] Fetching ticketInfo for ticketId=${ticketData.ticketId}`);
     const ticketInfo = await contract.getTicketInfo(ticketData.ticketId);
-    console.log('🎟️ TicketInfo from contract:', ticketInfo);
+    console.log('🎟️ [VERIFY] Raw ticketInfo:', ticketInfo);
 
+    // Destructure on‑chain ticket tuple
     const [
-      id, 
-      eventId, 
-      tierId, 
-      purchaser, 
-      attendeeCount, 
-      totalAmountPaid, 
-      purchaseTimestamp, 
-      paymentToken, 
-      used, 
-      eventStatusAtPurchase, 
-      currentEventStatus, 
-      valid, 
+      idBN,
+      eventIdBN,
+      tierIdBN,
+      purchaser,
+      attendeeCountBN,
+      totalAmountPaidBN,
+      purchaseTimestampBN,
+      paymentTokenIdx,
+      used,
+      eventStatusAtPurchaseIdx,
+      currentEventStatusIdx,
+      valid,
       reason
     ] = ticketInfo;
 
-    const eventIdStr = eventId.toString();
-    const tierIdStr = tierId.toString();
+    const ticketId = idBN.toNumber();
+    const eventId = eventIdBN.toNumber();
+    const tierId = tierIdBN.toNumber();
 
-    console.log(`📅 Fetching event ${eventIdStr} and tier ${tierIdStr} data...`);
-    const eventData = await contract.getEvent(eventIdStr);
-    const tierData = await contract.getTicketTier(eventIdStr, tierIdStr);
-    console.log('📄 EventData:', eventData);
-    console.log('💺 TierData:', tierData);
+    console.log(`📅 [VERIFY] Fetching event(${eventId}) and tier(${tierId}) data`);
+    const eventData = await contract.getEvent(eventId);
+    const tierData = await contract.getTicketTier(eventId, tierId);
+    console.log('📄 [VERIFY] Raw eventData:', eventData);
+    console.log('💺 [VERIFY] Raw tierData:', tierData);
 
+    // Destructure on‑chain event tuple
+    const [
+      eventIdDataBN,
+      organizerOnChain,
+      eventTitle,
+      eventDescription,
+      eventLocation,
+      startDateBN,
+      endDateBN,
+      metadataURI,
+      eventActive,
+      tierCountBN
+    ] = eventData;
+
+    // Destructure on‑chain tier tuple
+    const [
+      tierName,
+      pricePerPersonBN,
+      maxSupplyBN,
+      currentSupplyBN,
+      tierPaymentTokenIdx,
+      tierActive
+    ] = tierData;
+
+    // Build verification result
     const verificationResult = {
-      ticketId: id.toNumber(),
-      eventId: eventId.toNumber(),
-      eventTitle: eventData.title,
-      eventLocation: eventData.location,
-      eventStartDate: eventData.startDate.toNumber(),
-      eventEndDate: eventData.endDate.toNumber(),
-      tierName: tierData.name,
-      attendeeCount: attendeeCount.toNumber(),
-      totalAmountPaid: ethers.utils.formatEther(totalAmountPaid),
-      pricePerPerson: ethers.utils.formatEther(tierData.pricePerPerson),
-      tokenType: ['XFI', 'XUSD', 'MPX'][paymentToken] || 'XFI',
-      purchaseTimestamp: purchaseTimestamp.toNumber(),
+      ticketId,
+      eventId,
+      eventTitle,
+      eventLocation,
+      eventStartDate: startDateBN.toNumber(),
+      eventEndDate: endDateBN.toNumber(),
+      tierName,
+      attendeeCount: attendeeCountBN.toNumber(),
+      totalAmountPaid: ethers.utils.formatEther(totalAmountPaidBN),
+      pricePerPerson: ethers.utils.formatEther(pricePerPersonBN),
+      tokenType: ['XFI', 'XUSD', 'MPX'][paymentTokenIdx] ?? 'XFI',
+      purchaseTimestamp: purchaseTimestampBN.toNumber(),
       purchaser,
       used,
       valid,
       validationReason: reason,
-      eventStatusAtPurchase: ['upcoming', 'live', 'ended'][eventStatusAtPurchase] || 'upcoming',
-      currentEventStatus: ['upcoming', 'live', 'ended'][currentEventStatus] || 'upcoming',
+      eventStatusAtPurchase: ['upcoming', 'live', 'ended'][eventStatusAtPurchaseIdx] ?? 'upcoming',
+      currentEventStatus: ['upcoming', 'live', 'ended'][currentEventStatusIdx] ?? 'upcoming',
       timestamp: new Date().toISOString(),
       blockchainVerified: true
     };
 
-    console.log('✅ Verification result:', verificationResult);
-
-    res.json(verificationResult);
+    console.log('✅ [VERIFY] verificationResult:', verificationResult);
+    return res.json(verificationResult);
 
   } catch (error) {
-    console.error('🔥 Error during ticket verification:', error);
-
+    console.error('🔥 [VERIFY] Error during verification:', error.message);
     if (error.message.includes('Ticket does not exist')) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: 'Ticket not found',
         valid: false,
         reason: 'Ticket does not exist on blockchain'
       });
-    } else {
-      return res.status(500).json({ 
-        error: 'Failed to verify ticket',
-        details: error.message 
-      });
     }
+    return res.status(500).json({ error: 'Failed to verify ticket', details: error.message });
   }
 }));
+
 
 
 /**
