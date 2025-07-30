@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Upload, CheckCircle, XCircle, X, Scan, StopCircle, Key, Users, AlertTriangle } from 'lucide-react';
+import { Camera, Upload, CheckCircle, XCircle, X, Scan, StopCircle, Key, Users, AlertTriangle, ZoomIn, ZoomOut } from 'lucide-react';
 import { useWeb3 } from '../context/Web3Context';
 import { toast } from 'react-toastify';
 import QrScanner from 'qr-scanner';
@@ -38,6 +38,13 @@ const FullScreenScannerModal: React.FC<{
   const webcamRef = useRef<Webcam>(null);
   const scanInterval = useRef<NodeJS.Timeout | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1); // Default zoom level (1 = 100%)
+  const zoomLevelRef = useRef(zoomLevel);
+
+  // Update ref whenever zoom level changes
+  useEffect(() => {
+    zoomLevelRef.current = zoomLevel;
+  }, [zoomLevel]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -84,16 +91,26 @@ const FullScreenScannerModal: React.FC<{
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <Webcam
-        ref={webcamRef}
-        audio={false}
-        screenshotFormat="image/jpeg"
-        videoConstraints={{
-          deviceId: selectedDevice,
-          facingMode: selectedDevice ? undefined : 'environment'
+      {/* Zoomable Webcam container */}
+      <div 
+        className="absolute inset-0 overflow-hidden"
+        style={{
+          transform: `scale(${zoomLevel})`,
+          transformOrigin: 'center',
+          transition: 'transform 0.1s ease',
         }}
-        className="absolute inset-0 w-full h-full object-cover"
-      />
+      >
+        <Webcam
+          ref={webcamRef}
+          audio={false}
+          screenshotFormat="image/jpeg"
+          videoConstraints={{
+            deviceId: selectedDevice,
+            facingMode: selectedDevice ? undefined : 'environment'
+          }}
+          className="w-full h-full object-cover"
+        />
+      </div>
       
       {/* Scanning overlay */}
       <div className="absolute inset-0 flex items-center justify-center">
@@ -116,6 +133,45 @@ const FullScreenScannerModal: React.FC<{
           <span className="font-medium">
             {isScanning ? 'Scanning...' : 'Initializing scanner...'}
           </span>
+        </div>
+      </div>
+      
+      {/* Zoom controls */}
+      <div className="absolute top-20 right-4 bg-black/70 rounded-full p-2 flex flex-col items-center">
+        <button 
+          onClick={() => setZoomLevel(prev => Math.min(3, prev + 0.1))}
+          className="p-2 text-white hover:bg-white/20 rounded-full"
+          disabled={zoomLevel >= 3}
+        >
+          <ZoomIn className="w-5 h-5" />
+        </button>
+        
+        <div className="h-32 w-2 bg-gray-600 rounded-full my-2 relative">
+          <input
+            type="range"
+            min="1"
+            max="3"
+            step="0.1"
+            value={zoomLevel}
+            onChange={(e) => setZoomLevel(parseFloat(e.target.value))}
+            className="absolute top-0 left-1/2 -translate-x-1/2 h-32 w-32 -rotate-90 opacity-0 cursor-pointer"
+          />
+          <div 
+            className="absolute bottom-0 left-0 right-0 bg-green-500 rounded-full"
+            style={{ height: `${((zoomLevel - 1) / 2) * 100}%` }}
+          />
+        </div>
+        
+        <button 
+          onClick={() => setZoomLevel(prev => Math.max(1, prev - 0.1))}
+          className="p-2 text-white hover:bg-white/20 rounded-full"
+          disabled={zoomLevel <= 1}
+        >
+          <ZoomOut className="w-5 h-5" />
+        </button>
+        
+        <div className="text-white text-xs mt-2 bg-black/50 px-2 py-1 rounded-full">
+          {Math.round(zoomLevel * 100)}%
         </div>
       </div>
       
