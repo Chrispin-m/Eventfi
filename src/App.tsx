@@ -32,7 +32,7 @@ type Particle = {
   life: number;
 };
 
-// Gamified loader component with interactive particles
+// gamified loader
 const TicketLoader = () => {
   const [particles, setParticles] = useState<Particle[]>([]);
   const [messageIndex, setMessageIndex] = useState(0);
@@ -40,14 +40,12 @@ const TicketLoader = () => {
   const particleId = useRef(0);
   
   const loadingMessages = [
-    "Connecting to Web3 Wallet...",
-    "Minting Event Tickets...",
-    "Verifying NFT Tickets...",
-    "Scanning Blockchain...",
-    "Creating Event...",
-    "Loading Event Data...",
-    "Finalizing Purchase...",
-    "Confirming Transaction..."
+    "Connecting to blockchain...",
+    "Preparing your tickets...",
+    "Verifying access...",
+    "Loading event magic...",
+    "Finalizing transaction...",
+    "Creating your experience..."
   ];
 
   // Cycle through loading messages
@@ -60,15 +58,15 @@ const TicketLoader = () => {
     }
   }, [messageIndex]);
 
-  // interactive particles on mouse/touch
+  // Create interactive particles
   const createParticles = (x: number, y: number) => {
     const newParticles: Particle[] = [];
-    const colors = ['#ff00ff', '#00ffff', '#ffff00', '#ff7700', '#a200ff'];
+    const colors = ['#6366f1', '#ec4899', '#3b82f6', '#8b5cf6', '#06b6d4'];
     
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 12; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 2 + Math.random() * 3;
-      const size = 5 + Math.random() * 15;
+      const speed = 1 + Math.random() * 2;
+      const size = 8 + Math.random() * 12;
       
       newParticles.push({
         id: particleId.current++,
@@ -78,14 +76,14 @@ const TicketLoader = () => {
         color: colors[Math.floor(Math.random() * colors.length)],
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        life: 50 + Math.random() * 50
+        life: 40 + Math.random() * 40
       });
     }
     
     setParticles(prev => [...prev, ...newParticles]);
   };
 
-  // Handle mouse/touch events
+  // Handle interactions
   const handleInteraction = (e: React.MouseEvent | React.TouchEvent) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -100,24 +98,22 @@ const TicketLoader = () => {
     createParticles(x, y);
   };
 
-  // loop for particles
+  // Particle animation
   useEffect(() => {
     let animationFrameId: number;
     
     const updateParticles = () => {
       setParticles(prev => {
-        const updated = prev
+        return prev
           .map(p => ({
             ...p,
             x: p.x + p.vx,
             y: p.y + p.vy,
             life: p.life - 1,
-            size: p.size * 0.97,
-            vy: p.vy + 0.1  // Gravity effect
+            size: p.size * 0.98,
+            vy: p.vy + 0.08  // Gentle gravity
           }))
           .filter(p => p.life > 0 && p.size > 0.5);
-        
-        return updated;
       });
       
       animationFrameId = requestAnimationFrame(updateParticles);
@@ -125,152 +121,156 @@ const TicketLoader = () => {
     
     animationFrameId = requestAnimationFrame(updateParticles);
     
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-    };
+    return () => cancelAnimationFrame(animationFrameId);
   }, []);
 
   return (
     <div 
       ref={containerRef}
-      className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center touch-none"
+      className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center touch-none"
       onMouseMove={handleInteraction}
       onTouchMove={handleInteraction}
     >
-      {/* Interactive particles */}
+      {/* Subtle background pattern */}
+      <div className="absolute inset-0 opacity-10 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCI+PGNpcmNsZSBjeD0iNDAiIGN5PSI0MCIgcj0iMzAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIyIi8+PC9zdmc+')]"></div>
+      
+      {/* Elegant particles */}
       {particles.map(p => (
         <div
           key={p.id}
-          className="absolute rounded-full opacity-80"
+          className="absolute rounded-full opacity-80 transition-all duration-100"
           style={{
             left: p.x,
             top: p.y,
             width: p.size,
             height: p.size,
-            background: p.color,
-            boxShadow: `0 0 ${p.size/2}px ${p.size/3}px ${p.color}`,
+            background: `radial-gradient(circle at center, ${p.color}, transparent)`,
             transform: `translate(-50%, -50%)`,
             opacity: p.life / 100,
-            transition: 'all 0.1s ease-out'
+            filter: `blur(${Math.max(2, p.size/8)}px)`
           }}
         />
       ))}
       
-      {/* Floating tickets with physics */}
-      {[...Array(12)].map((_, i) => (
+      {/* Graceful ticket holograms - static positions with gentle pulsing */}
+      {[0, 1, 2, 3].map((_, i) => (
         <div 
           key={i}
-          className="absolute w-16 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl shadow-xl border-2 border-white/20 flex items-center justify-center"
+          className="absolute w-20 h-28 bg-gradient-to-br from-indigo-500/20 to-purple-600/20 rounded-xl backdrop-blur-sm border border-white/10 flex items-center justify-center shadow-lg"
           style={{
-            top: `${10 + Math.random() * 80}%`,
-            left: `${10 + Math.random() * 80}%`,
-            transform: `rotate(${Math.random() * 20 - 10}deg)`,
-            animation: `float${i % 3} 4s ease-in-out infinite ${i * 0.3}s`,
-            opacity: 0.8,
+            top: `${15 + (i % 2) * 50}%`,
+            left: `${20 + (i % 3) * 30}%`,
+            transform: `rotate(${i * 15}deg)`,
+            animation: `pulse 4s ease-in-out infinite ${i * 0.5}s`,
+            opacity: 0.3,
             zIndex: 10
           }}
         >
-          <div className="absolute inset-1 border border-white/30 rounded-lg"></div>
-          <div className="text-white font-bold text-xs rotate-90">TICKET</div>
+          <div className="absolute inset-1 border border-white/10 rounded-lg"></div>
+          <div className="text-white/30 font-bold text-xs rotate-90">EVENT</div>
         </div>
       ))}
       
-      {/* Center stage with dynamic message */}
-      <div className="relative z-20 text-center p-8 rounded-2xl bg-black/50 backdrop-blur-lg border border-cyan-500/50">
+      {/* Main focus area */}
+      <div className="relative z-30 text-center p-8 rounded-2xl bg-black/30 backdrop-blur-md border border-indigo-500/30 max-w-md">
         <div className="mb-6">
           <div className="relative w-32 h-32 mx-auto">
-            <div className="absolute inset-0 rounded-full border-4 border-cyan-400 animate-ping-slow opacity-30"></div>
-            <div className="absolute inset-4 rounded-full border-4 border-cyan-500 animate-spin-slow"></div>
-            <div className="absolute inset-8 rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 flex items-center justify-center">
-              <div className="w-4 h-4 bg-white rounded-full animate-pulse"></div>
+            {/* Elegant concentric circles */}
+            <div className="absolute inset-0 rounded-full border-4 border-indigo-500/20 animate-ping-slow"></div>
+            <div className="absolute inset-4 rounded-full border-4 border-indigo-500/30 animate-ping-slower"></div>
+            
+            {/* Central animated element */}
+            <div className="absolute inset-8 rounded-full bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center shadow-lg">
+              <div className="relative w-full h-full flex items-center justify-center">
+                <div className="absolute w-6 h-6 bg-white rounded-full animate-pulse"></div>
+                <div className="absolute w-full h-full animate-spin-slow">
+                  <div className="w-4 h-4 bg-cyan-400 rounded-full absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2"></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
         
-        <div className="text-cyan-300 text-xl font-bold mb-2">
+        <div className="text-indigo-300 text-xl font-medium mb-2 tracking-wider">
           {loadingMessages[messageIndex]}
         </div>
         
-        <div className="text-white/80 text-sm max-w-md">
-          {messageIndex > 2 ? "Almost there! Your blockchain magic is processing..." : "Hang tight! The decentralized fairies are at work..."}
+        <div className="text-white/70 text-sm mb-6">
+          {messageIndex > 2 ? "Finishing touches..." : "Securing your blockchain experience..."}
         </div>
         
-        <div className="mt-6 text-xs text-white/50">
-          <div className="mb-1">Tip: Touch/move to create colorful particles!</div>
-          <div className="flex justify-center gap-2">
-            <div className="w-2 h-2 bg-cyan-500 rounded-full animate-bounce"></div>
-            <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-            <div className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+        {/* Interactive prompt */}
+        <div className="text-xs text-white/50 italic">
+          <div className="mb-1">Tip: Move cursor to create magical effects</div>
+          <div className="flex justify-center gap-1">
+            {[...Array(5)].map((_, i) => (
+              <div 
+                key={i} 
+                className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"
+                style={{ animationDelay: `${i * 0.2}s` }}
+              ></div>
+            ))}
           </div>
         </div>
       </div>
       
-      {/* Animated stage elements */}
-      <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-cyan-500/20 to-transparent"></div>
-      <div className="absolute top-0 left-0 right-0 h-20 bg-gradient-to-b from-purple-500/20 to-transparent"></div>
+      {/* Ambient lighting */}
+      <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-indigo-500/10 to-transparent"></div>
+      <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-purple-500/10 to-transparent"></div>
       
-      {/* Scanning lasers */}
-      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#ff00ff] to-transparent animate-scan"></div>
-      <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#00ffff] to-transparent animate-scan-reverse"></div>
+      {/* Subtle scanning effect */}
+      <div className="absolute top-10 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-indigo-500 to-transparent animate-scan"></div>
       
-      {/* Injected CSS for animations */}
+      {/* Injected CSS */}
       <style jsx>{`
         @keyframes scan {
-          0% { transform: translateY(0); opacity: 0.8; }
-          100% { transform: translateY(100vh); opacity: 0.2; }
+          0% { transform: translateY(0); opacity: 0.3; }
+          100% { transform: translateY(80vh); opacity: 0.1; }
         }
-        @keyframes scan-reverse {
-          0% { transform: translateY(0) scaleX(-1); opacity: 0.8; }
-          100% { transform: translateY(-100vh) scaleX(-1); opacity: 0.2; }
-        }
-        @keyframes float0 {
-          0%, 100% { transform: translateY(0) rotate(-5deg); }
-          50% { transform: translateY(-30px) rotate(5deg); }
-        }
-        @keyframes float1 {
-          0%, 100% { transform: translateY(0) rotate(3deg); }
-          50% { transform: translateY(-40px) rotate(-3deg); }
-        }
-        @keyframes float2 {
-          0%, 100% { transform: translateY(0) rotate(0); }
-          50% { transform: translateY(-35px) rotate(8deg); }
+        @keyframes pulse {
+          0%, 100% { transform: rotate(var(--rotation)) scale(1); opacity: 0.3; }
+          50% { transform: rotate(calc(var(--rotation) + 5deg)) scale(1.05); opacity: 0.4; }
         }
         @keyframes spin-slow {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
         @keyframes ping-slow {
-          0% { transform: scale(1); opacity: 1; }
-          75%, 100% { transform: scale(2); opacity: 0; }
+          0% { transform: scale(1); opacity: 0.2; }
+          100% { transform: scale(1.8); opacity: 0; }
+        }
+        @keyframes ping-slower {
+          0% { transform: scale(1); opacity: 0.1; }
+          100% { transform: scale(2.5); opacity: 0; }
         }
         .animate-scan {
-          animation: scan 2.5s ease-in-out infinite;
-        }
-        .animate-scan-reverse {
-          animation: scan-reverse 3s ease-in-out infinite;
-        }
-        .animate-spin-slow {
-          animation: spin-slow 8s linear infinite;
+          animation: scan 4s ease-in-out infinite;
         }
         .animate-ping-slow {
-          animation: ping-slow 3s cubic-bezier(0,0,0.2,1) infinite;
+          animation: ping-slow 4s cubic-bezier(0,0,0.2,1) infinite;
+        }
+        .animate-ping-slower {
+          animation: ping-slower 5s cubic-bezier(0,0,0.2,1) infinite;
+        }
+        .animate-spin-slow {
+          animation: spin-slow 12s linear infinite;
         }
       `}</style>
     </div>
   );
 };
 
-// Loader provider component
+// Loader provider
 const LoaderProvider = ({ children }: { children: React.ReactNode }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('Loading Web3 Magic...');
+  const [loadingMessage, setLoadingMessage] = useState('Connecting to blockchain...');
   const [requestCount, setRequestCount] = useState(0);
 
   useEffect(() => {
     const originalFetch = window.fetch;
     
     window.fetch = async (...args) => {
-      // Don't show loader for favicon requests
+      // Skip non-essential requests
       if (args[0]?.toString().includes('favicon.ico')) {
         return originalFetch(...args);
       }
@@ -278,12 +278,13 @@ const LoaderProvider = ({ children }: { children: React.ReactNode }) => {
       setIsLoading(true);
       setRequestCount(prev => prev + 1);
       
-      // context-specific messages
+      // Set context-specific messages
       const url = args[0]?.toString() || '';
-      if (url.includes('/api/events')) setLoadingMessage('Loading Events...');
-      if (url.includes('/api/tickets')) setLoadingMessage('Processing Tickets...');
-      if (url.includes('/api/verify')) setLoadingMessage('Verifying Ticket...');
-      if (url.includes('/api/create-event')) setLoadingMessage('Creating Event...');
+      if (url.includes('/api/events')) setLoadingMessage('Discovering events...');
+      if (url.includes('/api/tickets')) setLoadingMessage('Processing your tickets...');
+      if (url.includes('/api/verify')) setLoadingMessage('Verifying ticket...');
+      if (url.includes('/api/create-event')) setLoadingMessage('Creating your event...');
+      if (url.includes('/api/wallet')) setLoadingMessage('Securing wallet connection...');
       
       try {
         return await originalFetch(...args);
@@ -342,7 +343,8 @@ function App() {
               pauseOnFocusLoss
               draggable
               pauseOnHover
-              theme="light"
+              theme="colored"
+              toastClassName="border border-indigo-200 shadow-lg"
             />
           </div>
         </Router>
