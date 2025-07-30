@@ -462,8 +462,6 @@ router.post('/verify', asyncHandler(async (req, res) => {
   }
 }));
 
-
-
 /**
  * @route POST /api/tickets/staff-verify
  * @desc Verify a ticket using staff member credentials (enhanced)
@@ -471,92 +469,142 @@ router.post('/verify', asyncHandler(async (req, res) => {
  */
 router.post('/staff-verify', asyncHandler(async (req, res) => {
   const { qrData, staffCode, eventId } = req.body;
+  console.log(`📩 [STAFF-VERIFY] Incoming request body: ${JSON.stringify(req.body)}`);
 
   if (!qrData || !staffCode || !eventId) {
+    console.warn('❌ [STAFF-VERIFY] Missing qrData, staffCode or eventId');
     return res.status(400).json({ error: 'QR code data, staff code, and event ID are required' });
   }
 
+  let ticketData;
   try {
-    // Parse QR code data to extract ticket information
-    const ticketData = extractTicketDataFromQR(qrData);
-    
-    if (!ticketData || !ticketData.ticketId) {
-      return res.status(400).json({ error: 'Invalid QR code format' });
-    }
+    ticketData = extractTicketDataFromQR(qrData);
+    console.log(`🔍 [STAFF-VERIFY] Parsed ticketData: ${JSON.stringify(ticketData)}`);
+  } catch (parseErr) {
+    console.warn('⚠️ [STAFF-VERIFY] QR parse error:', parseErr.message);
+    return res.status(400).json({ error: 'Invalid QR code format' });
+  }
 
-    // Verify staff code (simple implementation - in production use proper authentication)
-    const validStaffCode = `STAFF-${eventId}`;
-    if (staffCode !== validStaffCode) {
-      return res.status(401).json({ error: 'Invalid staff code' });
-    }
+  if (!ticketData.ticketId) {
+    console.warn('⚠️ [STAFF-VERIFY] Missing ticketId in parsed data');
+    return res.status(400).json({ error: 'Invalid QR code format' });
+  }
 
-    const contract = getEventManagerContract();
-    
-    if (!contract) {
-      return res.status(500).json({ 
-        error: 'Contract not configured' 
-      });
-    }
-    
-    // Get complete ticket information from blockchain
+  const expectedStaffCode = `STAFF-${eventId}`;
+  if (staffCode !== expectedStaffCode) {
+    console.warn(`🚫 [STAFF-VERIFY] Invalid staffCode. Expected ${expectedStaffCode}`);
+    return res.status(401).json({ error: 'Invalid staff code' });
+  }
+  console.log('✅ [STAFF-VERIFY] Staff code validated');
+
+  const contract = getEventManagerContract();
+  if (!contract) {
+    console.error('🚫 [STAFF-VERIFY] Contract not configured');
+    return res.status(500).json({ error: 'Contract not configured' });
+  }
+  console.log(`🔗 [STAFF-VERIFY] Using EventManager at ${contract.address}`);
+
+  try {
+    console.log(`🔗 [STAFF-VERIFY] Fetching ticketInfo for ticketId=${ticketData.ticketId}`);
     const ticketInfo = await contract.getTicketInfo(ticketData.ticketId);
-    
-    // Verify ticket belongs to the specified event
-    if (parseInt(ticketInfo.eventId.toString()) !== parseInt(eventId)) {
-      return res.status(400).json({ 
+    console.log('🎟️ [STAFF-VERIFY] Raw ticketInfo:', ticketInfo);
+
+    // Destructure ticket tuple
+    const [
+      idBN,
+      ticketEventIdBN,
+      tierIdBN,
+      purchaser,
+      attendeeCountBN,
+      totalAmountPaidBN,
+      purchaseTimestampBN,
+      paymentTokenIdx,
+      used,
+      eventStatusAtPurchaseIdx,
+      currentEventStatusIdx,
+      valid,
+      reason
+    ] = ticketInfo;
+
+    const ticketEventId = ticketEventIdBN.toNumber();
+    if (ticketEventId !== Number(eventId)) {
+      console.warn(`⚠️ [STAFF-VERIFY] ticketEventId(${ticketEventId}) ≠ eventId(${eventId})`);
+      return res.status(400).json({
         error: 'Ticket does not belong to this event',
         valid: false,
         reason: 'Invalid event for this ticket'
       });
     }
-    
-    // Get event details
-    const eventData = await contract.getEvent(ticketInfo.eventId.toString());
-    
-    // Get tier details
-    const tierData = await contract.getTicketTier(ticketInfo.eventId.toString(), ticketInfo.tierId.toString());
-    
+    console.log('✅ [STAFF-VERIFY] Ticket-event match confirmed');
+
+    console.log(`📅 [STAFF-VERIFY] Fetching event(${ticketEventId}) and tier(${tierIdBN.toNumber()}) data`);
+    const eventData = await contract.getEvent(ticketEventId);
+    const tierData = await contract.getTicketTier(ticketEventId, tierIdBN.toNumber());
+    console.log('📄 [STAFF-VERIFY] Raw eventData:', eventData);
+    console.log('💺 [STAFF-VERIFY] Raw tierData:', tierData);
+
+    // Destructure event tuple
+    const [
+      eventIdDataBN,
+      organizerOnChain,
+      eventTitle,
+      eventDescription,
+      eventLocation,
+      startDateBN,
+      endDateBN,
+      metadataURI,
+      eventActive,
+      tierCountBN
+    ] = eventData;
+
+    // Destructure tier tuple
+    const [
+      tierName,
+      pricePerPersonBN,
+      maxSupplyBN,
+      currentSupplyBN,
+      tierPaymentTokenIdx,
+      tierActive
+    ] = tierData;
+
     const verificationResult = {
-      ticketId: parseInt(ticketInfo.id.toString()),
-      eventId: parseInt(ticketInfo.eventId.toString()),
-      eventTitle: eventData[2],
-      eventLocation: eventData[4],
-      eventStartDate: parseInt(eventData[5].toString()),
-      eventEndDate: parseInt(eventData[6].toString()),
-      tierName: tierData[0],
-      attendeeCount: parseInt(ticketInfo.attendeeCount.toString()),
-      totalAmountPaid: ethers.utils.formatEther(ticketInfo.totalAmountPaid),
-      pricePerPerson: ethers.utils.formatEther(tierData[1]),
-      tokenType: ['XFI', 'XUSD', 'MPX'][parseInt(ticketInfo.paymentToken.toString())],
-      purchaseTimestamp: parseInt(ticketInfo.purchaseTimestamp.toString()),
-      purchaser: ticketInfo.purchaser,
-      used: ticketInfo.used,
-      valid: ticketInfo.valid,
-      reason: ticketInfo.reason,
-      eventStatusAtPurchase: ['upcoming', 'live', 'ended'][parseInt(ticketInfo.eventStatusAtPurchase.toString())],
-      currentEventStatus: ['upcoming', 'live', 'ended'][parseInt(ticketInfo.currentEventStatus.toString())],
+      ticketId: idBN.toNumber(),
+      eventId: ticketEventId,
+      eventTitle,
+      eventLocation,
+      eventStartDate: startDateBN.toNumber(),
+      eventEndDate: endDateBN.toNumber(),
+      tierName,
+      attendeeCount: attendeeCountBN.toNumber(),
+      totalAmountPaid: ethers.utils.formatEther(totalAmountPaidBN),
+      pricePerPerson: ethers.utils.formatEther(pricePerPersonBN),
+      tokenType: ['XFI', 'XUSD', 'MPX'][paymentTokenIdx] ?? 'XFI',
+      purchaseTimestamp: purchaseTimestampBN.toNumber(),
+      purchaser,
+      used,
+      valid,
+      validationReason: reason,
+      eventStatusAtPurchase: ['upcoming', 'live', 'ended'][eventStatusAtPurchaseIdx] ?? 'upcoming',
+      currentEventStatus: ['upcoming', 'live', 'ended'][currentEventStatusIdx] ?? 'upcoming',
       qrData,
       timestamp: new Date().toISOString(),
       staffVerified: true,
       blockchainVerified: true
     };
 
-    res.json(verificationResult);
+    console.log('✅ [STAFF-VERIFY] verificationResult:', verificationResult);
+    return res.json(verificationResult);
 
   } catch (error) {
-    console.error('Error verifying ticket with staff code:', error);
+    console.error('🔥 [STAFF-VERIFY] Error during staff verification:', error.message);
     if (error.message.includes('Ticket does not exist')) {
-      res.status(404).json({ 
+      return res.status(404).json({
         error: 'Ticket not found',
         valid: false,
         reason: 'Ticket does not exist on blockchain'
       });
-    } else {
-      res.status(500).json({ 
-        error: 'Failed to verify ticket',
-        details: error.message 
-      });
     }
+    return res.status(500).json({ error: 'Failed to verify ticket', details: error.message });
   }
 }));
 
