@@ -295,6 +295,7 @@ router.post('/verify', asyncHandler(async (req, res) => {
   try {
     // Parse QR code data to extract ticket information
     const ticketData = extractTicketDataFromQR(qrData);
+    console.log(ticketData);
     
     if (!ticketData || !ticketData.ticketId) {
       return res.status(400).json({ error: 'Invalid QR code format' });
