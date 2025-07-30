@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Upload, CheckCircle, XCircle, Scan, StopCircle, Key, Users, AlertTriangle } from 'lucide-react';
+import { Camera, Upload, CheckCircle, XCircle, X, Scan, StopCircle, Key, Users, AlertTriangle } from 'lucide-react';
 import { useWeb3 } from '../context/Web3Context';
 import { toast } from 'react-toastify';
 import QrScanner from 'qr-scanner';
