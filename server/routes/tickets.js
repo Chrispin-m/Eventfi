@@ -41,92 +41,83 @@ router.get('/user/:address', asyncHandler(async (req, res) => {
     
     for (const ticketId of userTicketIds) {
       try {
-        // complete ticket information from blockchain
-        const ticketInfo = await contract.getTicketInfo(ticketId.toString());
-        console.log('Raw ticketInfo:', ticketInfo);
+        // Get complete ticket information from blockchain
+        const ticketInfo = await contract.getTicketInfo(ticketId);
         
         // Destructure the array response
         const [
-          idBN,
-          eventIdBN,
-          tierIdBN,
+          id,
+          eventId,
+          tierId,
           purchaser,
-          attendeeCountBN,
-          totalAmountPaidBN,
-          purchaseTimestampBN,
-          paymentTokenUint,
+          attendeeCount,
+          totalAmountPaid,
+          purchaseTimestamp,
+          paymentToken,
           used,
-          eventStatusAtPurchaseUint,
-          currentEventStatusUint,
+          eventStatusAtPurchase,
+          currentEventStatus,
           valid,
           reason
         ] = ticketInfo;
 
-        // BigNumbers to numbers
-        const eventId = parseInt(eventIdBN.toString());
-        const tierId = parseInt(tierIdBN.toString());
-        const attendeeCount = parseInt(attendeeCountBN.toString());
-        const totalAmountPaid = ethers.utils.formatEther(totalAmountPaidBN);
-        const purchaseTimestamp = parseInt(purchaseTimestampBN.toString());
-        
         // Get event details
         const eventData = await contract.getEvent(eventId.toString());
-        const [
-          eventIdData,
-          eventOrganizer,
-          eventTitle,
-          eventDescription,
-          eventLocation,
-          eventStartDateBN,
-          eventEndDateBN,
-          eventMetadataURI,
-          eventActive,
-          eventTierCountBN
-        ] = eventData;
+        const {
+          id: eventIdData,
+          organizer,
+          title: eventTitle,
+          description,
+          location: eventLocation,
+          startDate: eventStartDate,
+          endDate: eventEndDate,
+          metadataURI,
+          active: eventActive,
+          tierCount
+        } = eventData;
         
-        // tier details
+        // Get tier details
         const tierData = await contract.getTicketTier(eventId.toString(), tierId.toString());
-        const [
-          tierName,
-          pricePerPersonBN,
-          maxSupplyBN,
-          currentSupplyBN,
-          tokenTypeUint,
-          tierActive
-        ] = tierData;
+        const {
+          name: tierName,
+          pricePerPerson,
+          maxSupply,
+          currentSupply,
+          tokenType: tierTokenType,
+          active: tierActive
+        } = tierData;
         
         // Map token types
         const tokenTypes = ['XFI', 'XUSD', 'MPX'];
-        const tokenType = tokenTypes[parseInt(paymentTokenUint)] || 'XFI';
-        const tierTokenType = tokenTypes[parseInt(tokenTypeUint)] || 'XFI';
+        const tokenType = tokenTypes[paymentToken] || 'XFI';
         
         // Map event statuses
         const eventStatuses = ['upcoming', 'live', 'ended'];
-        const eventStatusAtPurchase = eventStatuses[parseInt(eventStatusAtPurchaseUint)] || 'upcoming';
-        const currentEventStatus = eventStatuses[parseInt(currentEventStatusUint)] || 'upcoming';
+        const eventStatusAtPurchaseStr = eventStatuses[eventStatusAtPurchase] || 'upcoming';
+        const currentEventStatusStr = eventStatuses[currentEventStatus] || 'upcoming';
         
         const ticket = {
-          id: parseInt(idBN.toString()),
-          eventId,
+          id: id.toNumber(),
+          eventId: eventId.toNumber(),
           eventTitle,
-          eventLocation: eventLocation,
-          eventStartDate: parseInt(eventStartDateBN.toString()),
-          eventEndDate: parseInt(eventEndDateBN.toString()),
+          eventLocation,
+          eventStartDate: eventStartDate.toNumber(),
+          eventEndDate: eventEndDate.toNumber(),
           tierName,
-          pricePerPerson: ethers.utils.formatEther(pricePerPersonBN),
-          attendeeCount,
-          totalAmountPaid,
+          pricePerPerson: ethers.utils.formatEther(pricePerPerson),
+          attendeeCount: attendeeCount.toNumber(),
+          totalAmountPaid: ethers.utils.formatEther(totalAmountPaid),
           tokenType,
-          purchaseTime: purchaseTimestamp,
+          purchaseTime: purchaseTimestamp.toNumber(),
           used,
           valid,
           validationReason: reason,
-          eventStatusAtPurchase,
-          currentEventStatus,
+          eventStatusAtPurchase: eventStatusAtPurchaseStr,
+          currentEventStatus: currentEventStatusStr,
           purchaser,
           status: getEventStatus(
-            parseInt(eventStartDateBN.toString()), 
-            parseInt(eventEndDateBN.toString())
+            eventStartDate.toNumber(), 
+            eventEndDate.toNumber()
           )
         };
         
@@ -208,57 +199,57 @@ router.get('/:id', asyncHandler(async (req, res) => {
       reason
     ] = ticketInfo;
 
-    const eventId = parseInt(eventIdBN.toString());
-    const tierId = parseInt(tierIdBN.toString());
+    const eventId = eventIdBN.toString();
+    const tierId = tierIdBN.toString();
     
     // Get event details
-    const eventData = await contract.getEvent(eventId.toString());
-    const [
-      eventIdData,
-      eventOrganizer,
-      eventTitle,
-      eventDescription,
-      eventLocation,
-      eventStartDateBN,
-      eventEndDateBN,
-      eventMetadataURI,
-      eventActive,
-      eventTierCountBN
-    ] = eventData;
+    const eventData = await contract.getEvent(eventId);
+    const {
+      id: eventIdData,
+      organizer,
+      title: eventTitle,
+      description,
+      location: eventLocation,
+      startDate: eventStartDate,
+      endDate: eventEndDate,
+      metadataURI,
+      active: eventActive,
+      tierCount
+    } = eventData;
     
     // Get tier details
-    const tierData = await contract.getTicketTier(eventId.toString(), tierId.toString());
-    const [
-      tierName,
-      pricePerPersonBN,
-      maxSupplyBN,
-      currentSupplyBN,
-      tokenTypeUint,
-      tierActive
-    ] = tierData;
+    const tierData = await contract.getTicketTier(eventId, tierId);
+    const {
+      name: tierName,
+      pricePerPerson,
+      maxSupply,
+      currentSupply,
+      tokenType: tierTokenType,
+      active: tierActive
+    } = tierData;
     
     // Map token types
     const tokenTypes = ['XFI', 'XUSD', 'MPX'];
-    const tokenType = tokenTypes[parseInt(paymentTokenUint)] || 'XFI';
+    const tokenType = tokenTypes[paymentTokenUint] || 'XFI';
     
     // Map event statuses
     const eventStatuses = ['upcoming', 'live', 'ended'];
-    const eventStatusAtPurchase = eventStatuses[parseInt(eventStatusAtPurchaseUint)] || 'upcoming';
-    const currentEventStatus = eventStatuses[parseInt(currentEventStatusUint)] || 'upcoming';
+    const eventStatusAtPurchase = eventStatuses[eventStatusAtPurchaseUint] || 'upcoming';
+    const currentEventStatus = eventStatuses[currentEventStatusUint] || 'upcoming';
     
     const ticketData = {
-      id: parseInt(idBN.toString()),
-      eventId,
+      id: idBN.toNumber(),
+      eventId: eventIdBN.toNumber(),
       eventTitle,
       eventLocation,
-      eventStartDate: parseInt(eventStartDateBN.toString()),
-      eventEndDate: parseInt(eventEndDateBN.toString()),
+      eventStartDate: eventStartDate.toNumber(),
+      eventEndDate: eventEndDate.toNumber(),
       tierName,
-      pricePerPerson: ethers.utils.formatEther(pricePerPersonBN),
-      attendeeCount: parseInt(attendeeCountBN.toString()),
+      pricePerPerson: ethers.utils.formatEther(pricePerPerson),
+      attendeeCount: attendeeCountBN.toNumber(),
       totalAmountPaid: ethers.utils.formatEther(totalAmountPaidBN),
       tokenType,
-      purchaseTime: parseInt(purchaseTimestampBN.toString()),
+      purchaseTime: purchaseTimestampBN.toNumber(),
       used,
       valid,
       validationReason: reason,
@@ -266,13 +257,13 @@ router.get('/:id', asyncHandler(async (req, res) => {
       currentEventStatus,
       purchaser,
       qrCode: await generateTicketQR({
-        id: parseInt(idBN.toString()),
-        eventId,
-        attendeeCount: parseInt(attendeeCountBN.toString()),
+        id: idBN.toNumber(),
+        eventId: eventIdBN.toNumber(),
+        attendeeCount: attendeeCountBN.toNumber(),
         purchaser,
         totalAmountPaid: ethers.utils.formatEther(totalAmountPaidBN),
         tokenType,
-        purchaseTime: parseInt(purchaseTimestampBN.toString()),
+        purchaseTime: purchaseTimestampBN.toNumber(),
         currentEventStatus
       }),
       blockchainVerified: true
@@ -317,10 +308,10 @@ router.post('/verify', asyncHandler(async (req, res) => {
       });
     }
     
-    // CORRECTED: Use ticketData.ticketId instead of undefined ticketId
+    // Get ticket info
     const ticketInfo = await contract.getTicketInfo(ticketData.ticketId);
 
-    // Destructure the tuple into individual variables
+    // Destructure the tuple
     const [
       id, 
       eventId, 
@@ -337,31 +328,33 @@ router.post('/verify', asyncHandler(async (req, res) => {
       reason
     ] = ticketInfo;
 
-    // Get event details
-    const eventData = await contract.getEvent(eventId);
+    // Convert to strings for contract calls
+    const eventIdStr = eventId.toString();
+    const tierIdStr = tierId.toString();
 
-    // Get tier details
-    const tierData = await contract.getTicketTier(eventId, tierId);
+    // Get event and tier details
+    const eventData = await contract.getEvent(eventIdStr);
+    const tierData = await contract.getTicketTier(eventIdStr, tierIdStr);
 
     const verificationResult = {
-      ticketId: parseInt(id.toString()),
-      eventId: parseInt(eventId.toString()),
+      ticketId: id.toNumber(),
+      eventId: eventId.toNumber(),
       eventTitle: eventData.title,
       eventLocation: eventData.location,
-      eventStartDate: parseInt(eventData.startDate.toString()),
-      eventEndDate: parseInt(eventData.endDate.toString()),
+      eventStartDate: eventData.startDate.toNumber(),
+      eventEndDate: eventData.endDate.toNumber(),
       tierName: tierData.name,
-      attendeeCount: parseInt(attendeeCount.toString()),
+      attendeeCount: attendeeCount.toNumber(),
       totalAmountPaid: ethers.utils.formatEther(totalAmountPaid),
       pricePerPerson: ethers.utils.formatEther(tierData.pricePerPerson),
-      tokenType: ['XFI', 'XUSD', 'MPX'][parseInt(paymentToken.toString())],
-      purchaseTimestamp: parseInt(purchaseTimestamp.toString()),
-      purchaser: purchaser,
-      used: used,
-      valid: valid,
+      tokenType: ['XFI', 'XUSD', 'MPX'][paymentToken] || 'XFI',
+      purchaseTimestamp: purchaseTimestamp.toNumber(),
+      purchaser,
+      used,
+      valid,
       validationReason: reason,
-      eventStatusAtPurchase: ['upcoming', 'live', 'ended'][parseInt(eventStatusAtPurchase.toString())],
-      currentEventStatus: ['upcoming', 'live', 'ended'][parseInt(currentEventStatus.toString())],
+      eventStatusAtPurchase: ['upcoming', 'live', 'ended'][eventStatusAtPurchase] || 'upcoming',
+      currentEventStatus: ['upcoming', 'live', 'ended'][currentEventStatus] || 'upcoming',
       timestamp: new Date().toISOString(),
       blockchainVerified: true
     };
@@ -398,14 +391,14 @@ router.post('/staff-verify', asyncHandler(async (req, res) => {
   }
 
   try {
-    // Parse QR code data to extract ticket information
+    // Parse QR code data
     const ticketData = extractTicketDataFromQR(qrData);
     
     if (!ticketData || !ticketData.ticketId) {
       return res.status(400).json({ error: 'Invalid QR code format' });
     }
 
-    // Verify staff code (simple implementation - in production use proper authentication)
+    // Verify staff code
     const validStaffCode = `STAFF-${eventId}`;
     if (staffCode !== validStaffCode) {
       return res.status(401).json({ error: 'Invalid staff code' });
@@ -414,49 +407,66 @@ router.post('/staff-verify', asyncHandler(async (req, res) => {
     const contract = getEventManagerContract();
     
     if (!contract) {
-      return res.status(500).json({ 
-        error: 'Contract not configured' 
-      });
+      return res.status(500).json({ error: 'Contract not configured' });
     }
     
-    // Get complete ticket information from blockchain
+    // Get ticket info
     const ticketInfo = await contract.getTicketInfo(ticketData.ticketId);
-    
-    // Verify ticket belongs to the specified event
-    if (parseInt(ticketInfo.eventId.toString()) !== parseInt(eventId)) {
+
+    // Destructure tuple
+    const [
+      id, 
+      ticketEventId, 
+      tierId, 
+      purchaser, 
+      attendeeCount, 
+      totalAmountPaid, 
+      purchaseTimestamp, 
+      paymentToken, 
+      used, 
+      eventStatusAtPurchase, 
+      currentEventStatus, 
+      valid, 
+      reason
+    ] = ticketInfo;
+
+    // Convert to strings for contract calls
+    const ticketEventIdStr = ticketEventId.toString();
+    const eventIdStr = eventId.toString();
+    const tierIdStr = tierId.toString();
+
+    // Verify event match
+    if (parseInt(ticketEventIdStr) !== parseInt(eventIdStr)) {
       return res.status(400).json({ 
         error: 'Ticket does not belong to this event',
         valid: false,
         reason: 'Invalid event for this ticket'
       });
     }
-    
-    // Get event details
-    const eventData = await contract.getEvent(ticketInfo.eventId.toString());
-    
-    // Get tier details
-    const tierData = await contract.getTicketTier(ticketInfo.eventId.toString(), ticketInfo.tierId.toString());
-    
+
+    // Get event and tier details
+    const eventData = await contract.getEvent(ticketEventIdStr);
+    const tierData = await contract.getTicketTier(ticketEventIdStr, tierIdStr);
+
     const verificationResult = {
-      ticketId: parseInt(ticketInfo.id.toString()),
-      eventId: parseInt(ticketInfo.eventId.toString()),
-      eventTitle: eventData[2],
-      eventLocation: eventData[4],
-      eventStartDate: parseInt(eventData[5].toString()),
-      eventEndDate: parseInt(eventData[6].toString()),
-      tierName: tierData[0],
-      attendeeCount: parseInt(ticketInfo.attendeeCount.toString()),
-      totalAmountPaid: ethers.utils.formatEther(ticketInfo.totalAmountPaid),
-      pricePerPerson: ethers.utils.formatEther(tierData[1]),
-      tokenType: ['XFI', 'XUSD', 'MPX'][parseInt(ticketInfo.paymentToken.toString())],
-      purchaseTimestamp: parseInt(ticketInfo.purchaseTimestamp.toString()),
-      purchaser: ticketInfo.purchaser,
-      used: ticketInfo.used,
-      valid: ticketInfo.valid,
-      reason: ticketInfo.reason,
-      eventStatusAtPurchase: ['upcoming', 'live', 'ended'][parseInt(ticketInfo.eventStatusAtPurchase.toString())],
-      currentEventStatus: ['upcoming', 'live', 'ended'][parseInt(ticketInfo.currentEventStatus.toString())],
-      qrData,
+      ticketId: id.toNumber(),
+      eventId: ticketEventId.toNumber(),
+      eventTitle: eventData.title,
+      eventLocation: eventData.location,
+      eventStartDate: eventData.startDate.toNumber(),
+      eventEndDate: eventData.endDate.toNumber(),
+      tierName: tierData.name,
+      attendeeCount: attendeeCount.toNumber(),
+      totalAmountPaid: ethers.utils.formatEther(totalAmountPaid),
+      pricePerPerson: ethers.utils.formatEther(tierData.pricePerPerson),
+      tokenType: ['XFI', 'XUSD', 'MPX'][paymentToken] || 'XFI',
+      purchaseTimestamp: purchaseTimestamp.toNumber(),
+      purchaser,
+      used,
+      valid,
+      validationReason: reason,
+      eventStatusAtPurchase: ['upcoming', 'live', 'ended'][eventStatusAtPurchase] || 'upcoming',
+      currentEventStatus: ['upcoming', 'live', 'ended'][currentEventStatus] || 'upcoming',
       timestamp: new Date().toISOString(),
       staffVerified: true,
       blockchainVerified: true
@@ -516,21 +526,26 @@ async function generateTicketQR(ticket) {
 
 function extractTicketDataFromQR(qrData) {
   try {
-    const data = JSON.parse(qrData);
+    // Handle both stringified JSON and object
+    const data = typeof qrData === 'string' ? JSON.parse(qrData) : qrData;
+    
     return {
-      ticketId: data.ticketId || null,
-      eventId: data.eventId || null,
-      attendeeCount: data.attendeeCount || null,
+      ticketId: data.ticketId ? parseInt(data.ticketId) : null,
+      eventId: data.eventId ? parseInt(data.eventId) : null,
+      attendeeCount: data.attendeeCount ? parseInt(data.attendeeCount) : null,
       purchaser: data.purchaser || null,
       totalAmountPaid: data.totalAmountPaid || null,
       tokenType: data.tokenType || null,
-      purchaseTimestamp: data.purchaseTimestamp || null,
+      purchaseTimestamp: data.purchaseTimestamp ? parseInt(data.purchaseTimestamp) : null,
       eventStatus: data.eventStatus || null
     };
   } catch (error) {
-    // Try to extract ticket ID from simple format (backward compatibility)
-    const match = qrData.match(/ticketId[:\s]*(\d+)/i);
-    return match ? { ticketId: parseInt(match[1]) } : null;
+    // Try to extract ticket ID from simple format
+    if (typeof qrData === 'string') {
+      const match = qrData.match(/ticketId[:\s]*(\d+)/i);
+      return match ? { ticketId: parseInt(match[1]) } : null;
+    }
+    return null;
   }
 }
 
