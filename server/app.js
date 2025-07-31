@@ -27,6 +27,13 @@ app.use(helmet({
 }));
 app.use(compression());
 
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/tickets')) {
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+  }
+  next();
+});
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
