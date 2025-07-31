@@ -28,24 +28,13 @@ export const TicketPage: React.FC = () => {
     }
   }, [id]);
 
-  const fetchTicket = async (ticketId: string) => {
+   const fetchTicket = async (ticketId: string) => {
     try {
       setLoading(true);
       
-      // Prepare authentication
-      const authParams: Record<string, string> = { address: account || '' };
+      const params = new URLSearchParams();
+      if (account) params.append('address', account);
       
-      // Add signature
-      if (account && signer) {
-        const timestamp = Math.floor(Date.now() / 1000);
-        const message = `Accessing ticket ${ticketId} at ${timestamp}`;
-        const signature = await signer.signMessage(message);
-        
-        authParams.signature = signature;
-        authParams.message = message;
-      }
-
-      const params = new URLSearchParams(authParams);
       const response = await fetch(`/api/tickets/${ticketId}?${params.toString()}`);
       const data = await response.json();
       
