@@ -28,7 +28,8 @@ const mockEvents = {
         currentSupply: 150,
         tokenType: 'XFI',
         active: true,
-        available: 350
+        available: 350,
+        owner: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A'
       },
       {
         id: 1,
@@ -39,7 +40,8 @@ const mockEvents = {
         currentSupply: 25,
         tokenType: 'XFI',
         active: true,
-        available: 75
+        available: 75,
+        owner: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A'
       },
       {
         id: 2,
@@ -50,7 +52,8 @@ const mockEvents = {
         currentSupply: 10,
         tokenType: 'XUSD',
         active: true,
-        available: 40
+        available: 40,
+        owner: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A'
       }
     ],
     status: 'upcoming'
@@ -76,7 +79,8 @@ const mockEvents = {
         currentSupply: 80,
         tokenType: 'XUSD',
         active: true,
-        available: 220
+        available: 220,
+        owner: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A'
       },
       {
         id: 1,
@@ -87,7 +91,8 @@ const mockEvents = {
         currentSupply: 30,
         tokenType: 'MPX',
         active: true,
-        available: 70
+        available: 70,
+        owner: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A'
       }
     ],
     status: 'upcoming'
@@ -113,7 +118,8 @@ const mockEvents = {
         currentSupply: 120,
         tokenType: 'XFI',
         active: true,
-        available: 280
+        available: 280,
+        owner: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A'
       },
       {
         id: 1,
@@ -124,7 +130,8 @@ const mockEvents = {
         currentSupply: 20,
         tokenType: 'XUSD',
         active: true,
-        available: 60
+        available: 60,
+        owner: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A'
       }
     ],
     status: 'upcoming'
@@ -559,7 +566,9 @@ router.post('/:id/purchase', async (req, res) => {
       pricePerPerson: tier.pricePerPerson,
       tokenType: tier.tokenType,
       purchaseTime: Math.floor(Date.now() / 1000),
-      qrData: `${id}-${tierId}-${buyerAddress}-${Date.now()}`
+      qrData: `${id}-${tierId}-${buyerAddress}-${Date.now()}`,
+      owner: buyerAddress
+
     };
 
     const metadataURI = `data:application/json;base64,${Buffer.from(JSON.stringify(ticketMetadata)).toString('base64')}`;
