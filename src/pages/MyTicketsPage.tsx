@@ -84,11 +84,10 @@ export const MyTicketsPage: React.FC = () => {
 
   const downloadTicket = async (ticket: UserTicket) => {
     try {
-      // QR code if not available
-      let qrCodeUrl = ticket.qrCode;
+      const params = new URLSearchParams();
+      if (account) params.append('address', account);
       
-      if (!qrCodeUrl) {
-        const response = await fetch(`/api/tickets/${ticket.id}`);
+      const response = await fetch(`/api/tickets/${ticket.id}?${params.toString()}`);
         const data = await response.json();
         qrCodeUrl = data.qrCode || '';
       }
