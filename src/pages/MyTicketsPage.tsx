@@ -83,13 +83,43 @@ export const MyTicketsPage: React.FC = () => {
   };
 
   const downloadTicket = async (ticket: UserTicket) => {
-  try {
-    const params = new URLSearchParams();
-    if (account) params.append('address', account);
+    try {
+      // Prepare authentication
+      const authParams: Record<string, string> = {};
+      
+      if (account && signer) {
+        const timestamp = Math.floor(Date.now() / 1000);
+        const message = `Accessing ticket ${ticket.id} at ${timestamp}`;
+        
+        try {
+          const signature = await signer.signMessage(message);
+          authParams.address = account;
+          authParams.signature = signature;
+          authParams.message = message;
+        } catch (error) {
+          // Handle user rejection
+          toast.error('Signature rejected by user');
+          return;
+        }
+      }
 
-    const response = await fetch(`/api/tickets/${ticket.id}?${params.toString()}`);
-    const data = await response.json();
-    const qrCodeUrl = data.qrCode || '';
+      // Build URL with auth params
+      const params = new URLSearchParams(authParams);
+      const response = await fetch(`/api/tickets/${ticket.id}?${params.toString()}`);
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast.error('Authentication required');
+        } else if (response.status === 403) {
+          toast.error('You are not the owner of this ticket');
+        } else {
+          toast.error('Ticket not found');
+        }
+        return;
+      }
+
+      const data = await response.json();
+      let qrCodeUrl = data.qrCode || '';
 
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
