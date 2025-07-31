@@ -30,6 +30,8 @@ interface Web3ContextType {
   connectWallet: (walletType?: 'metamask' | 'walletconnect' | 'injected') => Promise<void>;
   disconnectWallet: () => void;
   switchToCrossFi: () => Promise<void>;
+  signMessage: (message: string) => Promise<string>;
+
 }
 
 const Web3Context = createContext<Web3ContextType | null>(null);
@@ -51,6 +53,12 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [chainId, setChainId] = useState<number | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [ethereumProvider, setEthereumProvider] = useState<any>(null);
+  const signMessage = useCallback(async (message: string) => {
+    if (!signer) {
+      throw new Error('Signer not available');
+    }
+    return await signer.signMessage(message);
+  }, [signer]);  
 
   const isConnected = Boolean(account && provider);
 
@@ -314,6 +322,7 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
         connectWallet,
         disconnectWallet,
         switchToCrossFi,
+        signMessage,
       }}
     >
       {children}
