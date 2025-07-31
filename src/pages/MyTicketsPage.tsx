@@ -83,94 +83,84 @@ export const MyTicketsPage: React.FC = () => {
   };
 
   const downloadTicket = async (ticket: UserTicket) => {
-    try {
-      const params = new URLSearchParams();
-      if (account) params.append('address', account);
-      
-      const response = await fetch(`/api/tickets/${ticket.id}?${params.toString()}`);
-        const data = await response.json();
-        qrCodeUrl = data.qrCode || '';
-      }
+  try {
+    const params = new URLSearchParams();
+    if (account) params.append('address', account);
 
-      // a canvas to generate the ticket image
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+    const response = await fetch(`/api/tickets/${ticket.id}?${params.toString()}`);
+    const data = await response.json();
+    const qrCodeUrl = data.qrCode || '';
 
-      canvas.width = 800;
-      canvas.height = 1100;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-      // Background gradient
-      const gradient = ctx.createLinearGradient(0, 0, 800, 1000);
-      gradient.addColorStop(0, '#3B82F6');
-      gradient.addColorStop(1, '#8B5CF6');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 800, 1100);
+    canvas.width = 800;
+    canvas.height = 1100;
 
-      // White ticket area
-      ctx.fillStyle = 'white';
-      ctx.fillRect(50, 100, 700, 900);
+    const gradient = ctx.createLinearGradient(0, 0, 800, 1000);
+    gradient.addColorStop(0, '#3B82F6');
+    gradient.addColorStop(1, '#8B5CF6');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 800, 1100);
 
-      // Header
-      ctx.fillStyle = '#1F2937';
-      ctx.font = 'bold 32px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText('CrossFi Event Ticket', 400, 180);
+    ctx.fillStyle = 'white';
+    ctx.fillRect(50, 100, 700, 900);
 
-      // Event details
-      ctx.font = '24px Arial';
-      ctx.fillText(ticket.eventTitle, 400, 230);
-      
-      ctx.font = '18px Arial';
-      ctx.fillStyle = '#6B7280';
-      ctx.fillText(ticket.tierName, 400, 260);
-      ctx.fillText(ticket.eventLocation, 400, 290);
-      ctx.fillText(new Date(ticket.eventStartDate * 1000).toLocaleDateString(), 400, 320);
+    ctx.fillStyle = '#1F2937';
+    ctx.font = 'bold 32px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('CrossFi Event Ticket', 400, 180);
 
-      // Ticket details
-      ctx.font = '16px Arial';
-      ctx.fillText(`Ticket #${ticket.id}`, 400, 360);
-      ctx.fillText(`Valid for ${ticket.attendeeCount} attendee${ticket.attendeeCount > 1 ? 's' : ''}`, 400, 380);
-      ctx.fillText(`Total Paid: ${ticket.totalAmountPaid} ${ticket.tokenType}`, 400, 400);
+    // Event details
+    ctx.font = '24px Arial';
+    ctx.fillText(ticket.eventTitle, 400, 230);
 
-      // QR Code
-      if (qrCodeUrl) {
-        const qrImg = new Image();
-        qrImg.onload = () => {
-          ctx.drawImage(qrImg, 275, 430, 250, 250);
-          
-          // Instructions
-          ctx.font = '14px Arial';
-          ctx.fillStyle = '#374151';
-          ctx.fillText('Present this QR code at event entrance', 400, 710);
-          ctx.fillText(`Multi-person ticket for ${ticket.attendeeCount} attendee${ticket.attendeeCount > 1 ? 's' : ''}`, 400, 730);
-          
-          // Footer
-          ctx.font = '12px Arial';
-          ctx.fillStyle = '#9CA3AF';
-          ctx.fillText('Powered by CrossFi Chain - Blockchain Verified', 400, 880);
-          ctx.fillText(`Downloaded: ${new Date().toLocaleDateString()}`, 400, 900);
+    ctx.font = '18px Arial';
+    ctx.fillStyle = '#6B7280';
+    ctx.fillText(ticket.tierName, 400, 260);
+    ctx.fillText(ticket.eventLocation, 400, 290);
+    ctx.fillText(new Date(ticket.eventStartDate * 1000).toLocaleDateString(), 400, 320);
 
-          // Download the image
-          canvas.toBlob((blob) => {
-            if (blob) {
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.download = `crossfi-ticket-${ticket.id}-${ticket.attendeeCount}pax.png`;
-              link.href = url;
-              link.click();
-              URL.revokeObjectURL(url);
-              toast.success('Ticket downloaded successfully!');
-            }
-          }, 'image/png');
-        };
-        qrImg.src = qrCodeUrl;
-      }
-    } catch (error) {
-      console.error('Error downloading ticket:', error);
-      toast.error('Failed to download ticket');
+    ctx.font = '16px Arial';
+    ctx.fillText(`Ticket #${ticket.id}`, 400, 360);
+    ctx.fillText(`Valid for ${ticket.attendeeCount} attendee${ticket.attendeeCount > 1 ? 's' : ''}`, 400, 380);
+    ctx.fillText(`Total Paid: ${ticket.totalAmountPaid} ${ticket.tokenType}`, 400, 400);
+
+    if (qrCodeUrl) {
+      const qrImg = new Image();
+      qrImg.onload = () => {
+        ctx.drawImage(qrImg, 275, 430, 250, 250);
+
+        ctx.font = '14px Arial';
+        ctx.fillStyle = '#374151';
+        ctx.fillText('Present this QR code at event entrance', 400, 710);
+        ctx.fillText(`Multi-person ticket for ${ticket.attendeeCount} attendee${ticket.attendeeCount > 1 ? 's' : ''}`, 400, 730);
+
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#9CA3AF';
+        ctx.fillText('Powered by CrossFi Chain - Blockchain Verified', 400, 880);
+        ctx.fillText(`Downloaded: ${new Date().toLocaleDateString()}`, 400, 900);
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.download = `crossfi-ticket-${ticket.id}-${ticket.attendeeCount}pax.png`;
+            link.href = url;
+            link.click();
+            URL.revokeObjectURL(url);
+            toast.success('Ticket downloaded successfully!');
+          }
+        }, 'image/png');
+      };
+      qrImg.src = qrCodeUrl;
     }
-  };
+  } catch (error) {
+    console.error('Error downloading ticket:', error);
+    toast.error('Failed to download ticket');
+  }
+};
 
   const getStatusColor = (status: string) => {
     switch (status) {
