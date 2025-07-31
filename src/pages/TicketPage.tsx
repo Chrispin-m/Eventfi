@@ -28,33 +28,62 @@ export const TicketPage: React.FC = () => {
     }
   }, [id]);
 
-   const fetchTicket = async (ticketId: string) => {
+  const fetchTicket = async (ticketId: string) => {
     try {
       setLoading(true);
       
-      const params = new URLSearchParams();
-      if (account) params.append('address', account);
+      // Prepare authentication
+      const authParams: Record<string, string> = {};
       
-      const response = await fetch(`/api/tickets/${ticketId}?${params.toString()}`);
-      const data = await response.json();
-      
-      if (response.ok) {
-        // Add safe defaults for missing properties
-        const safeTicket: Ticket = {
-          ...data,
-          valid: data.valid ?? false,
-          validationReason: data.validationReason || '',
-          qrCode: data.qrCode || '',
-          blockchainVerified: data.blockchainVerified || false,
-          status: data.status || 'upcoming'
-        };
-        setTicket(safeTicket);
-      } else {
-        toast.error(data.error || 'Ticket not found');
+      if (account && signer) {
+        // unique message with timestamp and ticket ID
+        const timestamp = Math.floor(Date.now() / 1000);
+        const message = `Accessing ticket ${ticketId} at ${timestamp}`;
+        
+        try {
+          const signature = await signer.signMessage(message);
+          authParams.address = account;
+          authParams.signature = signature;
+          authParams.message = message;
+        } catch (error) {
+          // Handle user rejection
+          toast.error('Signature rejected by user');
+          setLoading(false);
+          return;
+        }
       }
+
+      // URL with auth params
+      const params = new URLSearchParams(authParams);
+      const response = await fetch(`/api/tickets/${ticketId}?${params.toString()}`);
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast.error('Authentication required');
+        } else if (response.status === 403) {
+          toast.error('You are not the owner of this ticket');
+        } else {
+          toast.error('Ticket not found');
+        }
+        setTicket(null);
+        return;
+      }
+
+      const data = await response.json();
+      const safeTicket: Ticket = {
+        ...data,
+        valid: data.valid ?? false,
+        validationReason: data.validationReason || '',
+        qrCode: data.qrCode || '',
+        blockchainVerified: data.blockchainVerified || false,
+        status: data.status || 'upcoming'
+      };
+      setTicket(safeTicket);
+      
     } catch (error) {
       console.error('Error fetching ticket:', error);
       toast.error('Failed to load ticket details');
+      setTicket(null);
     } finally {
       setLoading(false);
     }
