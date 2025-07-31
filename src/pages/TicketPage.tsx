@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Download, Share2, CheckCircle, AlertCircle } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { useWeb3 } from '../context/Web3Context';
 
 interface Ticket {
   id: number;
@@ -16,6 +17,7 @@ interface Ticket {
 }
 
 export const TicketPage: React.FC = () => {
+  const { account, signer } = useWeb3(); 
   const { id } = useParams<{ id: string }>();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,7 +31,22 @@ export const TicketPage: React.FC = () => {
   const fetchTicket = async (ticketId: string) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/tickets/${ticketId}`);
+      
+      // Prepare authentication
+      const authParams: Record<string, string> = { address: account || '' };
+      
+      // Add signature
+      if (account && signer) {
+        const timestamp = Math.floor(Date.now() / 1000);
+        const message = `Accessing ticket ${ticketId} at ${timestamp}`;
+        const signature = await signer.signMessage(message);
+        
+        authParams.signature = signature;
+        authParams.message = message;
+      }
+
+      const params = new URLSearchParams(authParams);
+      const response = await fetch(`/api/tickets/${ticketId}?${params.toString()}`);
       const data = await response.json();
       
       if (response.ok) {
