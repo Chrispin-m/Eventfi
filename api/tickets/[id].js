@@ -1,6 +1,7 @@
 import QRCode from 'qrcode';
 import { ethers } from 'ethers';
 
+// Mock ticket data with owner addresses
 const mockTickets = {
   1: {
     id: 1,
@@ -10,7 +11,7 @@ const mockTickets = {
       valid: true,
       reason: 'Valid ticket'
     },
-    owner: '0xdeAFa17D50dBa6224177FFA396395A7E096f250E' 
+    owner: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A'
   },
   2: {
     id: 2,
@@ -20,9 +21,10 @@ const mockTickets = {
       valid: true,
       reason: 'Valid ticket'
     },
-    owner: '0xdeAFa17D50dBa6224177FFA396395A7E096f250E'
+    owner: '0x2f9031A2beA086a591e9872FE3A26F01570A8B2B'
   }
 };
+
 
 async function generateTicketQR(ticketId) {
   try {
@@ -58,7 +60,7 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       const { id } = req.query;
-      const { address } = req.query; // Get address from query params
+      const { address, signature, message } = req.query;
 
       if (!id || isNaN(id)) {
         return res.status(400).json({ error: 'Invalid ticket ID' });
@@ -71,10 +73,29 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Ticket not found' });
       }
 
-      if (!address) {
-        return res.status(401).json({ error: 'Wallet address required' });
+      if (!address || !signature || !message) {
+        return res.status(401).json({ 
+          error: 'Authentication required',
+          details: 'Please sign the access request'
+        });
       }
 
+      try {
+        const signerAddress = ethers.utils.verifyMessage(message, signature);
+        if (signerAddress.toLowerCase() !== address.toLowerCase()) {
+          return res.status(401).json({ 
+            error: 'Invalid signature',
+            details: 'Signature does not match address'
+          });
+        }
+      } catch (error) {
+        return res.status(401).json({ 
+          error: 'Signature verification failed',
+          details: error.message 
+        });
+      }
+
+      // VERIFICATION: Check ticket ownership
       if (ticket.owner.toLowerCase() !== address.toLowerCase()) {
         return res.status(403).json({ 
           error: 'Access denied',
