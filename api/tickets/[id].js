@@ -1,6 +1,5 @@
 import QRCode from 'qrcode';
-
-// Mock ticket data
+import { ethers } from 'ethers'; 
 const mockTickets = {
   1: {
     id: 1,
@@ -9,7 +8,18 @@ const mockTickets = {
     verification: {
       valid: true,
       reason: 'Valid ticket'
-    }
+    },
+    owner: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A' // Add owner address
+  },
+  2: {
+    id: 2,
+    valid: true,
+    status: 'Valid ticket',
+    verification: {
+      valid: true,
+      reason: 'Valid ticket'
+    },
+    owner: '0x2f9031A2beA086a591e9872FE3A26F01570A8B2B'
   }
 };
 
@@ -47,6 +57,7 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       const { id } = req.query;
+      const { address, signature, message } = req.query; // Get auth params
 
       if (!id || isNaN(id)) {
         return res.status(400).json({ error: 'Invalid ticket ID' });
@@ -59,11 +70,36 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Ticket not found' });
       }
 
+      // VERIFICATION: Check if address is provided
+      if (!address) {
+        return res.status(401).json({ error: 'Wallet address required' });
+      }
+
+      // VERIFICATION: Check if signature is valid
+      if (signature && message) {
+        try {
+          const signerAddress = ethers.utils.verifyMessage(message, signature);
+          if (signerAddress.toLowerCase() !== address.toLowerCase()) {
+            return res.status(401).json({ error: 'Invalid signature' });
+          }
+        } catch (error) {
+          return res.status(401).json({ error: 'Signature verification failed' });
+        }
+      }
+
+      if (ticket.owner.toLowerCase() !== address.toLowerCase()) {
+        return res.status(403).json({ 
+          error: 'Access denied',
+          details: 'You are not the owner of this ticket'
+        });
+      }
+
       const qrCode = await generateTicketQR(ticketId);
 
       return res.status(200).json({
         ...ticket,
-        qrCode
+        qrCode,
+        blockchainVerified: true 
       });
 
     } catch (error) {
