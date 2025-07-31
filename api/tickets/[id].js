@@ -1,5 +1,6 @@
 import QRCode from 'qrcode';
-import { ethers } from 'ethers'; 
+import { ethers } from 'ethers';
+
 const mockTickets = {
   1: {
     id: 1,
@@ -9,7 +10,7 @@ const mockTickets = {
       valid: true,
       reason: 'Valid ticket'
     },
-    owner: '0x1f9031A2beA086a591e9872FE3A26F01570A8B2A' // Add owner address
+    owner: '0xdeAFa17D50dBa6224177FFA396395A7E096f250E' 
   },
   2: {
     id: 2,
@@ -19,7 +20,7 @@ const mockTickets = {
       valid: true,
       reason: 'Valid ticket'
     },
-    owner: '0x2f9031A2beA086a591e9872FE3A26F01570A8B2B'
+    owner: '0xdeAFa17D50dBa6224177FFA396395A7E096f250E'
   }
 };
 
@@ -57,7 +58,7 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       const { id } = req.query;
-      const { address, signature, message } = req.query; // Get auth params
+      const { address } = req.query; // Get address from query params
 
       if (!id || isNaN(id)) {
         return res.status(400).json({ error: 'Invalid ticket ID' });
@@ -70,21 +71,8 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Ticket not found' });
       }
 
-      // VERIFICATION: Check if address is provided
       if (!address) {
         return res.status(401).json({ error: 'Wallet address required' });
-      }
-
-      // VERIFICATION: Check if signature is valid
-      if (signature && message) {
-        try {
-          const signerAddress = ethers.utils.verifyMessage(message, signature);
-          if (signerAddress.toLowerCase() !== address.toLowerCase()) {
-            return res.status(401).json({ error: 'Invalid signature' });
-          }
-        } catch (error) {
-          return res.status(401).json({ error: 'Signature verification failed' });
-        }
       }
 
       if (ticket.owner.toLowerCase() !== address.toLowerCase()) {
@@ -99,7 +87,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ...ticket,
         qrCode,
-        blockchainVerified: true 
+        blockchainVerified: true
       });
 
     } catch (error) {
