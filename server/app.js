@@ -39,7 +39,12 @@ const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   message: 'Too many requests from this IP, please try again later.',
+  skip: (req, res) => {
+    // Skip limiter for self-ping
+    return req.ip === '::1' || req.ip === '127.0.0.1' || req.hostname === 'localhost';
+  }
 });
+
 app.use(limiter);
 
 app.use(cors({
