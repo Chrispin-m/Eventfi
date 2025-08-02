@@ -174,24 +174,70 @@ router.get('/user/:address', asyncHandler(async (req, res) => {
  */
 router.get('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const { address, signature, message } = req.query;
 
   if (!id || isNaN(id)) {
     return res.status(400).json({ error: 'Invalid ticket ID' });
   }
 
+  // Verify required authentication parameters
+  if (!address || !signature || !message) {
+    return res.status(401).json({
+      error: 'Please connect your wallet and access this ticket through "My Tickets"',
+      solution: 'Go to your profile and access tickets from your purchase history'
+    });
+  }
+
+  // Parse and validate message format
+  const messagePattern = /^Accessing ticket (\d+) at (\d+)$/;
+  const match = message.match(messagePattern);
+  
+  if (!match) {
+    return res.status(400).json({ 
+      error: 'Invalid message format',
+      requiredFormat: 'Accessing ticket {id} at {timestamp}'
+    });
+  }
+
+  // Verify ticket ID consistency
+  const [_, msgId, timestamp] = match;
+  if (parseInt(msgId) !== parseInt(id)) {
+    return res.status(403).json({
+      error: 'Ticket ID mismatch',
+      detail: 'Message references different ticket'
+    });
+  }
+
+  // Verify message timestamp (5-minute validity window)
+  const currentTime = Math.floor(Date.now() / 1000);
+  const timeDiff = Math.abs(currentTime - parseInt(timestamp));
+  
+  if (timeDiff > 300) {
+    return res.status(401).json({
+      error: 'Expired signature',
+      detail: `Signature is ${timeDiff} seconds old (max 300 allowed)`
+    });
+  }
+
   try {
-    const contract = getEventManagerContract();
+    // Verify cryptographic signature
+    const recoveredAddress = ethers.utils.verifyMessage(message, signature);
     
-    if (!contract) {
-      return res.status(500).json({ 
-        error: 'Contract not configured' 
+    if (recoveredAddress.toLowerCase() !== address.toLowerCase()) {
+      return res.status(403).json({
+        error: 'Signature verification failed',
+        detail: 'Signer address does not match provided address'
       });
     }
-    
-    // Get complete ticket information from blockchain
+
+    const contract = getEventManagerContract();
+    if (!contract) {
+      return res.status(500).json({ 
+        error: 'Blockchain connection error' 
+      });
+    }
+
     const ticketInfo = await contract.getTicketInfo(id);
-    
-    // Destructure the array response
     const [
       idBN,
       eventIdBN,
@@ -207,6 +253,14 @@ router.get('/:id', asyncHandler(async (req, res) => {
       valid,
       reason
     ] = ticketInfo;
+
+    // Verify purchaser ownership
+    if (purchaser.toLowerCase() !== address.toLowerCase()) {
+      return res.status(403).json({
+        error: 'Access denied',
+        detail: 'Connected wallet does not own this ticket'
+      });
+    }
 
     const eventId = parseInt(eventIdBN.toString());
     const tierId = parseInt(tierIdBN.toString());
@@ -275,7 +329,9 @@ router.get('/:id', asyncHandler(async (req, res) => {
         purchaseTime: parseInt(purchaseTimestampBN.toString()),
         currentEventStatus
       }),
-      blockchainVerified: true
+      blockchainVerified: true,
+      purchaserVerified: true,
+      signatureValid: true,
     };
 
     res.json(ticketData);
