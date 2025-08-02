@@ -27,6 +27,23 @@ app.use(helmet({
 }));
 app.use(compression());
 
+// === Middleware for ticket access validation ===
+const validateTicketAccess = (req, res, next) => {
+  // Check if it's a GET request for a specific ticket ID
+  if (req.method === 'GET' && /^\/[^\/]+$/.test(req.path)) {
+    const { address, signature, message } = req.query;
+    
+    // Validate required parameters
+    if (!address || !signature || !message) {
+      return res.status(400).json({
+        error: 'Please connect the purchaser wallet address and go to "My Tickets" to access this ticket.'
+      });
+    }
+  }
+  next();
+};
+
+
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/tickets')) {
     res.setHeader('Cache-Control', 'no-store, max-age=0');
@@ -80,7 +97,7 @@ app.get('/api/test', (req, res) => {
 
 app.use('/api/events', eventRoutes);
 app.use('/api/organizer', organizerRoutes);
-app.use('/api/tickets', ticketRoutes);
+app.use('/api/tickets', validateTicketAccess, ticketRoutes);
 
 // === Serve static frontend ===
 app.use(express.static(path.join(__dirname, '../dist')));
