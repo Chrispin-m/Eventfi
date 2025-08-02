@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Download, Share2, CheckCircle, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Download, Share2, CheckCircle, AlertCircle, Wallet } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useWeb3 } from '../context/Web3Context';
 
@@ -13,30 +13,36 @@ interface Ticket {
   valid?: boolean;
   validationReason?: string;
   blockchainVerified?: boolean;
+  purchaserVerified?: boolean;
+  signatureValid?: boolean;
   status: 'upcoming' | 'live' | 'ended';
+  purchaser?: string;
 }
 
 export const TicketPage: React.FC = () => {
-  const { account, signer } = useWeb3(); 
+  const { account, signer, connectWallet } = useWeb3();
   const { id } = useParams<{ id: string }>();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [signatureRequested, setSignatureRequested] = useState(false);
 
   useEffect(() => {
     if (id) {
       fetchTicket(id);
     }
-  }, [id]);
+  }, [id, account]);
 
-  const fetchTicket = async (ticketId: string) => {
+  const fetchTicket = async (ticketId: string, retry = false) => {
     try {
       setLoading(true);
+      setAuthError(null);
       
       // Prepare authentication
       const authParams: Record<string, string> = {};
       
-      if (account && signer) {
-        // unique message with timestamp and ticket ID
+      if (account && signer && !retry) {
+        setSignatureRequested(true);
         const timestamp = Math.floor(Date.now() / 1000);
         const message = `Accessing ticket ${ticketId} at ${timestamp}`;
         
@@ -45,9 +51,14 @@ export const TicketPage: React.FC = () => {
           authParams.address = account;
           authParams.signature = signature;
           authParams.message = message;
+          setSignatureRequested(false);
         } catch (error) {
-          // Handle user rejection
-          toast.error('Signature rejected by user');
+          setSignatureRequested(false);
+          if (error.code === 4001) {
+            toast.error('Signature rejected by user');
+          } else {
+            toast.error('Failed to sign message');
+          }
           setLoading(false);
           return;
         }
@@ -58,13 +69,28 @@ export const TicketPage: React.FC = () => {
       const response = await fetch(`/api/tickets/${ticketId}?${params.toString()}`);
       
       if (!response.ok) {
-        if (response.status === 401) {
-          toast.error('Authentication required');
+        const errorData = await response.json().catch(() => ({}));
+        
+        if (response.status === 400) {
+          setAuthError(errorData.error || 'Invalid request parameters');
+        } else if (response.status === 401) {
+          setAuthError('Please connect your wallet and access this ticket through "My Tickets"');
         } else if (response.status === 403) {
-          toast.error('You are not the owner of this ticket');
+          if (errorData.detail === 'Signer address does not match provided address') {
+            setAuthError('Wallet signature verification failed');
+          } else if (errorData.detail === 'Message references different ticket') {
+            setAuthError('Ticket ID mismatch in signature');
+          } else if (errorData.detail === 'Connected wallet does not own this ticket') {
+            setAuthError('This wallet does not own the ticket');
+          } else {
+            setAuthError('Access to this ticket is restricted');
+          }
+        } else if (response.status === 404) {
+          setAuthError('Ticket not found');
         } else {
-          toast.error('Ticket not found');
+          setAuthError('Failed to load ticket details');
         }
+        
         setTicket(null);
         return;
       }
@@ -76,16 +102,27 @@ export const TicketPage: React.FC = () => {
         validationReason: data.validationReason || '',
         qrCode: data.qrCode || '',
         blockchainVerified: data.blockchainVerified || false,
+        purchaserVerified: data.purchaserVerified || false,
+        signatureValid: data.signatureValid || false,
         status: data.status || 'upcoming'
       };
       setTicket(safeTicket);
       
     } catch (error) {
       console.error('Error fetching ticket:', error);
-      toast.error('Failed to load ticket details');
+      setAuthError('Network error while loading ticket');
       setTicket(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleConnectAndRetry = async () => {
+    try {
+      await connectWallet();
+      fetchTicket(id!, true);
+    } catch (error) {
+      toast.error('Failed to connect wallet');
     }
   };
 
@@ -121,26 +158,73 @@ export const TicketPage: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="text-center">
+          {signatureRequested ? (
+            <>
+              <div className="animate-pulse bg-blue-100 rounded-full p-4 w-16 h-16 mx-auto mb-4">
+                <Wallet className="w-8 h-8 text-blue-600 mx-auto" />
+              </div>
+              <h1 className="text-xl font-semibold text-gray-900 mb-2">Waiting for Signature</h1>
+              <p className="text-gray-600 max-w-md mx-auto">
+                Please check your wallet to sign the authentication message
+              </p>
+            </>
+          ) : (
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          )}
+        </div>
       </div>
     );
   }
 
-  // Ticket not found state
-  if (!ticket) {
+  // Ticket not found or auth error state
+  if (!ticket || authError) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Ticket Not Found</h1>
-          <p className="text-gray-600 mb-6">The ticket you're looking for doesn't exist.</p>
-          <Link
-            to="/"
-            className="inline-flex items-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back to Events</span>
-          </Link>
+        <div className="text-center max-w-lg px-4">
+          <div className="mx-auto mb-6">
+            <div className="bg-red-100 rounded-full p-4 w-16 h-16 inline-flex items-center justify-center">
+              <AlertCircle className="w-8 h-8 text-red-600" />
+            </div>
+          </div>
+          
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            {authError || 'Ticket Not Found'}
+          </h1>
+          
+          <p className="text-gray-600 mb-6">
+            {authError?.includes('connect') 
+              ? 'You need to connect the wallet that purchased this ticket to view it.'
+              : 'The ticket you requested could not be loaded.'}
+          </p>
+          
+          <div className="flex flex-col sm:flex-row justify-center gap-3">
+            <button
+              onClick={handleConnectAndRetry}
+              className="inline-flex items-center justify-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Wallet className="w-4 h-4" />
+              <span>Connect Wallet</span>
+            </button>
+            
+            <Link
+              to="/my-tickets"
+              className="inline-flex items-center justify-center space-x-2 bg-gray-200 text-gray-800 px-6 py-3 rounded-lg hover:bg-gray-300 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Go to My Tickets</span>
+            </Link>
+          </div>
+          
+          <div className="mt-8 p-4 bg-blue-50 rounded-lg text-left text-sm">
+            <h3 className="font-medium text-blue-800 mb-2">Access Instructions:</h3>
+            <ul className="space-y-1 text-blue-700">
+              <li>• Connect the wallet used to purchase the ticket</li>
+              <li>• Access tickets through "My Tickets" in your profile</li>
+              <li>• Sign the authentication message when prompted</li>
+              <li>• Ensure your wallet is connected to CrossFi Chain</li>
+            </ul>
+          </div>
         </div>
       </div>
     );
@@ -153,11 +237,11 @@ export const TicketPage: React.FC = () => {
         <div className="max-w-2xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <Link
-              to="/"
+              to="/my-tickets"
               className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Back to Events</span>
+              <span>My Tickets</span>
             </Link>
             
             <button
@@ -276,8 +360,35 @@ export const TicketPage: React.FC = () => {
                     <span className="text-green-600">Blockchain Verified ✓</span>
                   </div>
                 )}
+                {ticket.purchaserVerified && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Ownership:</span>
+                    <span className="text-green-600">Wallet Verified ✓</span>
+                  </div>
+                )}
+                {ticket.signatureValid && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Signature:</span>
+                    <span className="text-green-600">Valid ✓</span>
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Wallet Info */}
+            {account && (
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-medium text-gray-900 mb-2">Connected Wallet</h3>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-mono truncate max-w-[60%]">
+                    {account}
+                  </span>
+                  <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                    Connected
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Instructions */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
